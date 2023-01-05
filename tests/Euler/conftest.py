@@ -166,15 +166,15 @@ def strategy(
     keeper,
     vault,
     Strategy,
-    pool_token,
-    GenericAaveMorpho
+    staking_contract,
+    GenericEuler
 ):
     strategy = strategist.deploy(Strategy, vault)
     strategy.setKeeper(keeper, {"from": gov})
     strategy.setWithdrawalThreshold(0, {"from": gov})
     strategy.setRewards(rewards, {"from": strategist})
 
-    euler_plugin = strategist.deploy(GenericEuler, strategy, "GenericEulerLendnStake", pool_token)
+    euler_plugin = strategist.deploy(GenericEuler, strategy, "GenericEulerLendnStake", staking_contract)
     # assert morpho_plugin.apr() > 0
 
     strategy.addLender(euler_plugin, {"from": gov})
