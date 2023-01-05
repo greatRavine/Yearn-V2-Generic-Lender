@@ -39,10 +39,10 @@ contract GenericEuler is GenericLenderBase {
     // "stakingRewards_eUSDT": "0x7882F919e3acCa984babd70529100F937d90F860",
     // "stakingRewards_eWETH": "0x229443bf7F1297192394B7127427DB172a5bDe9E"
     address public constant EULER = address(0x27182842E098f60e3D576794A5bFFb0777E025d3);
-    IEulerMarkets public constant eMarkets = IEulerMarkets(address(0x3520d5a913427E6F0D6A83E07ccD4A4da316e4d3));
-    IEulerEToken public immutable eToken;
-    IStakingRewards public immutable eStaking;
-    IEulerSimpleLens public constant LENS = IEulerSimpleLens(address(0x5077B7642abF198b4a5b7C4BdCE4f03016C7089C));
+    IEulerMarkets internal constant eMarkets = IEulerMarkets(address(0x3520d5a913427E6F0D6A83E07ccD4A4da316e4d3));
+    IEulerEToken internal eToken;
+    IStakingRewards internal eStaking;
+    IEulerSimpleLens internal constant LENS = IEulerSimpleLens(address(0x5077B7642abF198b4a5b7C4BdCE4f03016C7089C));
 
     //Uniswap pools & fees - if unused compiler just ignores...usually we only need EUL, WETH and want...
     IERC20 public constant WETH9 = IERC20(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
@@ -123,61 +123,66 @@ contract GenericEuler is GenericLenderBase {
     function weightedApr() external view override returns (uint256) {
         uint256 a = _apr();
         return a.mul(_nav());
-        
+    }
     function withdraw(uint256 amount) external override management returns (uint256) {
         return _withdraw(amount);
     }
     function _withdraw(uint256 amount) internal returns (uint256) {
         (uint256 local, uint256 lent, uint256 staked, uint256 total) = getBalance();
         uint256 liquidity = IERC20(address(vault.token())).balanceOf(EULER);
-        uint256 totalLiquidity = liquidity.add(local);
-
-        if (totalLiquidity >= amount) {
-            if (total >= amount) {
-                // Do we need to unstake stuff?
-                uint256 unstaked = local.add(lent);
-                if (unstaked < amount) {
-                    // remaining debt to unwind in want
-                    uint256 remainingToFree = toBeFreedUp.sub(unstaked);
-                    // remaining debt to unwind in eTokens (round up - is caught in _withdrawStaking!)
-                    uint256 remainingToFreeETokens = eToken.convertUnderlyingToBalance(remainingToFree);
-                    //unstake calculated amount -> goes into lent out
-                    _withdrawStaking(remainingToFreeETokens);
-                    _exitLending();
-                // do we need to withdraw from lending?
-                } else if (toBeFreedUp > local) {
-                    _withdrawLending(toBeFreedUp.sub(local));
-                } else {
-                    //no action required
-                }
-            // oh no - debt > total
-            } else {
-                // unstake
-                _exitStaking();
-                // withdraw all lent out (removing max is a special case and liquidates the position)
-                _exitLending();
-            }
-        }
-
+        // how much is in staked or lent out - in general we assume lent out is 0 -> all is staked
+        uint256 toUnwind = amount > local ? amount - local : 0;
+        uint256 possibleToUnwind =  toUnwind > liquidity ? liquidity : toUnwind;
+        uint256 remainingToFreeETokens = eToken.convertUnderlyingToBalance(possibleToUnwind);
+        //unstake possibleToUnwind and withdraw
+        _withdrawStaking(remainingToFreeETokens);
+        _withdrawLending(possibleToUnwind);
+        uint256 looseBalance = want.balanceOf(address(this));
         want.safeTransfer(address(strategy), looseBalance);
         return looseBalance;
     }
 
+    function deposit() external override management {
+        //deposit and stake all!
+        _depositLending(type(uint256).max);
+        _depositStaking(type(uint256).max);
+    }
 
-    function emergencyWithdraw(uint256 amount) external;
 
-    function deposit() external;
+    function emergencyWithdraw(uint256 amount) external override management {
+        //deposit and stake all!
+        _depositLending(type(uint256).max);
+        _depositStaking(type(uint256).max);
+    }
 
-    function withdrawAll() external returns (bool);
+    function withdrawAll() external override management returns (bool) {
+        _withdraw(type(uint256).max);
+        (uint256 local,,,uint256 total) = getBalance();
+        return(local == total);
+    }
 
-    function hasAssets() external view returns (bool);
+    function hasAssets() external view override returns (bool) {
+        (,,,uint256 total) = getBalance();
+        return (total > 0);
+    }
 
-    function aprAfterDeposit(uint256 amount) external view returns (uint256);
+    function aprAfterDeposit(uint256 amount) external view override  returns (uint256) {
+        //oof
+    }
 
-    function setDust(uint256 _dust) external;
+    function protectedTokens()
+        internal
+        view
+        override
+        returns (address[] memory)
+    {
+        address[] memory protected = new address[](3);
+        protected[0]= address(eToken);
+        protected[1] = address(eStaking);
+        protected[2] = address(EUL);
+        return protected;
+    }
 
-    function sweep(address _token) external;
-}
 
 
 
@@ -218,12 +223,13 @@ contract GenericEuler is GenericLenderBase {
 // Internal funtions
    // ******** OVERRIDE THESE METHODS FROM BASE CONTRACT ************
     // internal function to be called
+    // withdraw will withdraw as much as possible if amount > balance
     function  _withdrawStaking(uint256 _amount) internal {
         if (_amount == 0) {
             return;
         }
         uint256 balance = eStaking.balanceOf(address(this));
-        if (balance >= _amount ){
+        if (balance > _amount ){
             eStaking.withdraw(_amount);
             emit WithdrawStaking(_amount, eToken.convertBalanceToUnderlying(_amount));
         } else  {
@@ -236,7 +242,7 @@ contract GenericEuler is GenericLenderBase {
             return;
         }
         uint256 balance = eToken.balanceOfUnderlying(address(this));
-        if (balance >= _amount ){
+        if (balance > _amount ){
             eToken.withdraw(0,_amount);
             emit WithdrawLending(eToken.convertUnderlyingToBalance(_amount), _amount);
         } else  {
@@ -244,29 +250,43 @@ contract GenericEuler is GenericLenderBase {
         }
     }
     function  _exitStaking() internal {
-        if (eStaking.balanceOf(address(this)) > 0){
-            uint256 amount = eStaking.balanceOf(address(this));
+        uint256 balance = eStaking.balanceOf(address(this));
+        if (balance > 0){
             eStaking.exit();
-            emit WithdrawStaking(amount, eToken.convertBalanceToUnderlying(amount));
+            emit WithdrawStaking(balance, eToken.convertBalanceToUnderlying(balance));
         }
     }
     function  _exitLending() internal {
-        if (eToken.balanceOf(address(this)) > 0) {  
-            uint256 amount = eToken.balanceOf(address(this));     
+        uint256 balance = eToken.balanceOf(address(this));
+        if (balance > 0) {      
             eToken.withdraw(0, type(uint256).max);
-            emit WithdrawLending(amount, eToken.convertBalanceToUnderlying(amount));
+            emit WithdrawLending(balance, eToken.convertBalanceToUnderlying(balance));
         }        
     }
     function  _depositStaking(uint256 _amount) internal {
-        if (_amount > 0 && eToken.balanceOf(address(this)) >= _amount) {
+        if (_amount == 0) {
+            return;
+        }
+        uint256 balance = eToken.balanceOf(address(this));
+        if (balance >= _amount) {
              eStaking.stake(_amount);
              emit DepositStaking(_amount, eToken.convertBalanceToUnderlying(_amount));     
+        } else {
+            eStaking.stake(balance);
+            emit DepositStaking(balance, eToken.convertBalanceToUnderlying(balance));
         }
     }
     function  _depositLending(uint256 _amount) internal {
-        if (_amount > 0 && want.balanceOf(address(this)) >= _amount) {
+        if (_amount == 0) {
+            return;
+        }
+        uint256 balance = want.balanceOf(address(this));
+        if (balance >= _amount) {
             eToken.deposit(0, _amount);
             emit DepositLending(eToken.convertUnderlyingToBalance(_amount), _amount);
-        }       
+        } else {
+            eToken.deposit(0, balance);
+            emit DepositLending(eToken.convertUnderlyingToBalance(balance), balance);  
+        }    
     }
 }
