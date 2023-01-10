@@ -82,6 +82,12 @@ def valueOfCurrencyInDollars(token):
 def eul_whale(accounts):
     yield accounts.at("0x27182842E098f60e3D576794A5bFFb0777E025d3", force=True)
 
+@pytest.fixture
+def euler_lending_pool():
+    yield "0x27182842E098f60e3D576794A5bFFb0777E025d3"
+
+
+
 
 @pytest.fixture()
 def strategist(accounts, whale, currency, amount):

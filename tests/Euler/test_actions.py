@@ -122,8 +122,8 @@ def test_normal_activity(
             if shares == 0:
                 break
             shareprice = vault.pricePerShare()
-            sharesout = int(shares * percent / 100)
-            expectedout = sharesout * shareprice / (10**decimals)
+            sharesout = int(round(shares * percent / 100))
+            expectedout = round(sharesout * shareprice / (10**decimals))
 
             balanceBefore = currency.balanceOf(whale)
             vault.withdraw(sharesout, {"from": whale})

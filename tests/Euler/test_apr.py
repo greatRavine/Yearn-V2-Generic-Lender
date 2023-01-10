@@ -23,6 +23,8 @@ def test_apr(
 
     deposit_limit = 100_000_000 * (10**decimals)
     debt_ratio = 10_000
+    # sanity check before depositing
+    assert plugin.apr() == plugin.aprAfterDeposit(0)
     vault.addStrategy(strategy, debt_ratio, 0, 2**256 - 1, 500, {"from": gov})
     vault.setDepositLimit(deposit_limit, {"from": gov})
     form = "{:.2%}"
