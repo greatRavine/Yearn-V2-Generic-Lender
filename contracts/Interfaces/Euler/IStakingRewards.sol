@@ -33,4 +33,11 @@ interface IStakingRewards {
 
     function withdraw(uint256 amount) external;
     function withdraw(uint subAccountId, uint256 amount) external;
+
+    // variables getters (added manually)
+
+    function periodFinish() external view returns (uint256);
+    function rewardRate() external view returns (uint256);
+    function rewardsDuration() external view returns (uint256);
+    function lastUpdateTime() external view returns (uint256);
 }

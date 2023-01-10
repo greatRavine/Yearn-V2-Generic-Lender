@@ -36,7 +36,25 @@ import "../Interfaces/UniswapInterfaces/V3/ISwapRouter.sol";
 import "../Interfaces/UniswapInterfaces/V3/IQuoterV2.sol";
 import "./GenericLenderBase.sol";
 
+interface IERC20Metadata is IERC20 {
+    /**
+     * @dev Returns the name of the token.
+     */
+    function name() external view returns (string memory);
+
+    /**
+     * @dev Returns the symbol of the token.
+     */
+    function symbol() external view returns (string memory);
+
+    /**
+     * @dev Returns the decimals places of the token.
+     */
+    function decimals() external view returns (uint8);
+}
+
 contract GenericEuler is GenericLenderBase {
+    using SafeERC20 for IERC20Metadata;
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
@@ -50,7 +68,7 @@ contract GenericEuler is GenericLenderBase {
     IStakingRewards internal eStaking;
     IEulerSimpleLens internal constant LENS = IEulerSimpleLens(address(0x5077B7642abF198b4a5b7C4BdCE4f03016C7089C));
     IBaseIRM public eulerIRM;
-    uint32 public eulerReserveFee;
+
 
     //Uniswap pools & fees - if unused compiler just ignores...usually we only need EUL, WETH and want...
     IERC20 public constant WETH9 = IERC20(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
@@ -67,6 +85,9 @@ contract GenericEuler is GenericLenderBase {
     uint24 internal constant poolFee100 = 10000;
     uint256 public constant SECONDS_PER_YEAR = 365.2425 * 86400;
     uint256 public constant RESERVE_FEE_SCALE = 4_000_000_000; // must fit into a uint32
+    uint8 private immutable wantDecimals;
+    uint8 private constant eulDecimals = 18;
+
 
     event DepositStaking (uint256 _token, uint256 _want);
     event DepositLending (uint256 _token, uint256 _want);
@@ -92,15 +113,19 @@ contract GenericEuler is GenericLenderBase {
 
         //Staking contracts
         eStaking = IStakingRewards(address(_stakingContract));
-        eToken = IEulerEToken(address(eMarkets.underlyingToEToken(vault.token())));
-        IERC20(address(eToken)).approve(address(_stakingContract), type(uint).max); 
+        eToken = IEulerEToken(address(eMarkets.underlyingToEToken(address(want))));
+        IERC20(address(eToken)).safeApprove(address(_stakingContract), type(uint).max); 
         want.safeApprove(address(EULER), type(uint256).max);
-        IERC20(address(EUL)).approve(address(uniswapRouter), type(uint).max);
-        //Set InterestRateModule
-        uint256 moduleID = eMarkets.interestRateModel(vault.token());
+        IERC20(address(EUL)).safeApprove(address(uniswapRouter), type(uint).max);
+        wantDecimals = IERC20Metadata(address(want)).decimals();
+        // // unnecessary 
+        // if (wantDecimals > 18) {
+        //     revert();
+        // }
+        //Set InterestRateModule - needed for apr estimation - reusable for arbitrary euler markets!
+        uint256 moduleID = eMarkets.interestRateModel(address(want));
         IEuler euler = IEuler(EULER);
         eulerIRM = IBaseIRM(euler.moduleIdToImplementation(moduleID));
-        eulerReserveFee = eMarkets.reserveFee(vault.token());
     }
 
     //return current holdings
@@ -131,10 +156,47 @@ contract GenericEuler is GenericLenderBase {
     function _apr() internal view returns (uint256) {
         // Only supply APY - staking not included - haven't found a clean way to get staking apr
         // RAY(1e27)
-        (,, uint256 supplyAPY) = LENS.interestRates(address(want));
+        
+        uint256 lending_apr = _lendingApr(0); 
+        uint256 staking_apr = _stakingApr(0);
 
-        return supplyAPY.div(1e9);
+        return lending_apr.add(staking_apr);
     }
+
+    function aprAfterDeposit(uint256 _amount) external view override  returns (uint256) {
+        uint256 lending_apr = _lendingApr(_amount);
+        uint256 staking_apr = _stakingApr(_amount);
+        return lending_apr.add(staking_apr);
+    }
+
+    function _lendingApr(uint256 _amount) internal view returns (uint256) {
+        if (_amount == 0) {
+            (,, uint256 supplyAPY) = LENS.interestRates(address(want));
+        } else {
+            (,uint256 totalBalance, uint256 totalBorrow,)=LENS.getTotalSupplyAndDebts(address(want));
+            //utilisation is scaled to 2**32 -> 100%
+            uint32 utilisation = uint32(totalBorrow.mul(type(uint32).max).div(totalBalance.add(_amount)));
+            //Scaling in RAY 1*10**27 == 100% apy
+            uint256 estimatedBorrowSPY = uint256(eulerIRM.computeInterestRate(vault.token(), utilisation));
+            uint256 supplyAPY = computeAPYs(estimatedBorrowSPY, totalBorrow ,totalBalance.add(_amount));
+        }
+        return supplyAPY.div(1e9) // scale to 1e18;
+    }
+
+    function _stakingApr(uint256 _amount) internal view returns (uint256) {
+        // EULunits per second
+        uint256 rewardRateAdj = eStaking.periodFinish() >= now ? eStaking.rewardRate() : 0;
+        // total Want units staked
+        uint256 totalWantStaked = eToken.convertBalanceToUnderlying((eStaking.totalSupply()).add(_amount));
+        //weiPerEul / weiPerWant = WantPerEul :)
+        (uint256 weiPerEul,,) = LENS.getPriceFull(address(EUL));
+        (uint256 weiPerWant,,) = LENS.getPriceFull(address(want));
+        // rewardsRate[EULunits/s] * weiPerEul[wei/(10**18 EULunits)]/weiPerWant[wei/(10**wantDecimals WANTunits)] * SECONDS_PER_YEAR[s] / TotalSupplyWant[WANTunits] * SCALING_FACTOR_1e18
+        // weiPerEul[wei/(1e18 EULunits)]/weiPerWant[wei/(10**wantDecimals WANTunits)] * SCALING_FACTOR_1e18 = (10**wantDecimals * WANTunits) / (1e18 * EULunits) * SCALING_FACTOR_1e18
+        uint256 apr = (10**wantDecimals).mul(weiPerEul).mul(rewardsRateAdj).div(SECONDS_PER_YEAR).div(weiPerWant) // mul(1e18).div(SCALING_FACTOR_1e18)
+        return apr;
+    }
+
     function weightedApr() external view override returns (uint256) {
         uint256 a = _apr();
         return a.mul(_nav());
@@ -149,7 +211,7 @@ contract GenericEuler is GenericLenderBase {
         uint256 toUnwind = _amount > local ? _amount - local : 0;
         uint256 toFreeETokens = eToken.convertUnderlyingToBalance(toUnwind);
         //unstake ToUnwind and withdraw - we withdraw as much as possible as we assume lent == 0
-        // if lent > 0 it is now cleaned up
+        // if lent > 0 - it is now 0 and our expectation hold true again
         _withdrawStaking(toFreeETokens);
         _withdrawLending(type(uint256).max);
         uint256 looseBalance = want.balanceOf(address(this));
@@ -180,30 +242,6 @@ contract GenericEuler is GenericLenderBase {
         (,,,uint256 total) = getBalance();
         return (total > 0);
     }
-
-    function aprAfterDeposit(uint256 _amount) external view override  returns (uint256) {
-        // calculating utilisation
-        // utilisation is scaled on uint32 -> type(uint32).max == 100%
-        (,uint256 totalBalance, uint256 totalBorrow,)=LENS.getTotalSupplyAndDebts(vault.token());
-        uint32 utilisation = uint32(totalBorrow.mul(type(uint32).max).div(totalBalance.add(_amount)));
-        //Scaling 1*10**27 == 100% apy
- 
-        uint256 estimatedBorrowSPY = uint256(eulerIRM.computeInterestRate(vault.token(), utilisation));
-        uint256 estimatedSupplyAPY = computeAPYs(estimatedBorrowSPY, totalBorrow ,totalBalance.add(_amount));
-        return uint256(estimatedSupplyAPY.div(1e9));
-    }
-    // function _calculateSupplyAPY(address utilisation) public view returns (uint256) {
-    //     int96 estimatedBorrowSPY = eulerIRM.computeInterestRate(vault.token(), utilisation);
-    //     estimatedSupplyAPY = estimatedBorrowSPY.mul((RESERVE_FEE_SCALE - eulerReserveFee).div(RESERVE_FEE_SCALE)).add(1).pow(SECONDS_PER_YEAR).sub(1);
-    // }
-    // compute APYs -stolen from:
-    // https://github.com/euler-xyz/euler-contracts/blob/6d1d7d11fc6cc74a92feded055315e562eaf9cb8/contracts/views/EulerSimpleLens.sol#L187
-    function computeAPYs(uint256 borrowSPY, uint256 totalBorrows, uint256 totalBalancesUnderlying) internal  returns (uint256 supplyAPY) {
-        uint256 supplySPY = totalBalancesUnderlying == 0 ? 0 : borrowSPY.mul(totalBorrows).div(totalBalancesUnderlying);
-        supplySPY = supplySPY.mul(RESERVE_FEE_SCALE - eulerReserveFee).div(RESERVE_FEE_SCALE);
-        supplyAPY = RPow.rpow(supplySPY + 1e27, SECONDS_PER_YEAR, 10**27) - 1e27;
-    }
-
     function protectedTokens()
         internal
         view
@@ -251,7 +289,7 @@ contract GenericEuler is GenericLenderBase {
 
 // Internal funtions
     // internal function to be called
-    // withdraw will withdraw as much as possible if amount > balance
+    // withdrawStaking will withdraw as much as possible if amount > balance
     // no liquidity issues with staking possible
     function  _withdrawStaking(uint256 _amount) internal {
         if (_amount == 0) {
@@ -273,7 +311,7 @@ contract GenericEuler is GenericLenderBase {
         }
     }
     //_amount in underlying!
-    //withdraw lending withdraws as much as possible if _amount > balance or _amount > liquidity
+    //withdrawLending withdraws as much as possible if _amount > balance or _amount > liquidity
     function  _withdrawLending(uint256 _amount) internal {
         // don't do anything if 0
         if (_amount == 0) {
@@ -285,7 +323,7 @@ contract GenericEuler is GenericLenderBase {
             return;
         }
         // factor in liquidity of lending pool
-        uint256 liquidity = IERC20(address(vault.token())).balanceOf(EULER);
+        uint256 liquidity = IERC20(address(want)).balanceOf(EULER);
         if (_amount > liquidity) {
             _amount = liquidity;
         }
@@ -327,6 +365,13 @@ contract GenericEuler is GenericLenderBase {
             eToken.deposit(0, balance);
             emit DepositLending(eToken.convertUnderlyingToBalance(balance), balance);  
         }    
+    }
+    // compute APYs - borrowed from:
+    // https://github.com/euler-xyz/euler-contracts/blob/6d1d7d11fc6cc74a92feded055315e562eaf9cb8/contracts/views/EulerSimpleLens.sol#L187
+    function computeAPYs(uint256 borrowSPY, uint256 totalBorrows, uint256 totalBalancesUnderlying) internal view returns (uint256 supplyAPY) {
+        uint256 supplySPY = totalBalancesUnderlying == 0 ? 0 : borrowSPY.mul(totalBorrows).div(totalBalancesUnderlying);
+        supplySPY = supplySPY.mul(RESERVE_FEE_SCALE - eMarkets.reserveFee(address(want))).div(RESERVE_FEE_SCALE);
+        supplyAPY = RPow.rpow(supplySPY + 1e27, SECONDS_PER_YEAR, 10**27) - 1e27;
     }
 }
 

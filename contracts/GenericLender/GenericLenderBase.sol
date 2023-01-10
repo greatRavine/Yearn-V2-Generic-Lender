@@ -37,6 +37,7 @@ abstract contract GenericLenderBase is IGenericLender {
     IERC20 public want;
     string public override lenderName;
     uint256 public dust;
+    uint8 private decimal_conversion;
 
     event Cloned(address indexed clone);
 
