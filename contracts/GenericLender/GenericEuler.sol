@@ -85,8 +85,8 @@ contract GenericEuler is GenericLenderBase {
     uint24 internal constant poolFee100 = 10000;
     uint256 public constant SECONDS_PER_YEAR = 365.2425 * 86400;
     uint256 public constant RESERVE_FEE_SCALE = 4_000_000_000; // must fit into a uint32
-    uint8 private immutable wantDecimals;
-    uint8 private constant eulDecimals = 18;
+    uint256 private wantDecimals;
+    //uint8 private constant eulDecimals = 18;
 
 
     event DepositStaking (uint256 _token, uint256 _want);
@@ -169,9 +169,10 @@ contract GenericEuler is GenericLenderBase {
         return lending_apr.add(staking_apr);
     }
 
-    function _lendingApr(uint256 _amount) internal view returns (uint256) {
+    function _lendingApr(uint256 _amount) public view returns (uint256) {
         if (_amount == 0) {
             (,, uint256 supplyAPY) = LENS.interestRates(address(want));
+            return supplyAPY.div(1e9);
         } else {
             (,uint256 totalBalance, uint256 totalBorrow,)=LENS.getTotalSupplyAndDebts(address(want));
             //utilisation is scaled to 2**32 -> 100%
@@ -179,11 +180,11 @@ contract GenericEuler is GenericLenderBase {
             //Scaling in RAY 1*10**27 == 100% apy
             uint256 estimatedBorrowSPY = uint256(eulerIRM.computeInterestRate(vault.token(), utilisation));
             uint256 supplyAPY = computeAPYs(estimatedBorrowSPY, totalBorrow ,totalBalance.add(_amount));
+            return supplyAPY.div(1e9);
         }
-        return supplyAPY.div(1e9) // scale to 1e18;
     }
 
-    function _stakingApr(uint256 _amount) internal view returns (uint256) {
+    function _stakingApr(uint256 _amount) public view returns (uint256) {
         // EULunits per second
         uint256 rewardRateAdj = eStaking.periodFinish() >= now ? eStaking.rewardRate() : 0;
         // total Want units staked
@@ -193,8 +194,8 @@ contract GenericEuler is GenericLenderBase {
         (uint256 weiPerWant,,) = LENS.getPriceFull(address(want));
         // rewardsRate[EULunits/s] * weiPerEul[wei/(10**18 EULunits)]/weiPerWant[wei/(10**wantDecimals WANTunits)] * SECONDS_PER_YEAR[s] / TotalSupplyWant[WANTunits] * SCALING_FACTOR_1e18
         // weiPerEul[wei/(1e18 EULunits)]/weiPerWant[wei/(10**wantDecimals WANTunits)] * SCALING_FACTOR_1e18 = (10**wantDecimals * WANTunits) / (1e18 * EULunits) * SCALING_FACTOR_1e18
-        uint256 apr = (10**wantDecimals).mul(weiPerEul).mul(rewardsRateAdj).div(SECONDS_PER_YEAR).div(weiPerWant) // mul(1e18).div(SCALING_FACTOR_1e18)
-        return apr;
+        uint256 staking_apr = (10**wantDecimals).mul(weiPerEul).mul(rewardRateAdj).div(SECONDS_PER_YEAR).div(weiPerWant); // mul(1e18).div(SCALING_FACTOR_1e18)
+        return staking_apr;
     }
 
     function weightedApr() external view override returns (uint256) {
