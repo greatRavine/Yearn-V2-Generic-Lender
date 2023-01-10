@@ -131,7 +131,7 @@ def test_withdrawals_work(
 
 
 # this test cycles through every plugin and checks we can add/remove lender and withdraw
-def test_withdrawal_above_aave_liquidity(
+def test_withdrawal_above_euler_liquidity(
     interface,
     chain,
     whale,

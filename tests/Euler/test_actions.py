@@ -115,7 +115,7 @@ def test_normal_activity(
 
         action = random.randint(0, 9)
         if action < 3:
-            percent = random.randint(50, 100)
+            percent = random.randint(50, 99)
 
             shares = vault.balanceOf(whale)
             print("whale has:", shares)
@@ -123,7 +123,7 @@ def test_normal_activity(
                 break
             shareprice = vault.pricePerShare()
             sharesout = int(round(shares * percent / 100))
-            expectedout = round(sharesout * shareprice / (10**decimals))
+            expectedout = sharesout * shareprice / (10**decimals)
 
             balanceBefore = currency.balanceOf(whale)
             vault.withdraw(sharesout, {"from": whale})

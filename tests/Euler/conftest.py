@@ -181,7 +181,6 @@ def strategy(
     strategy.setRewards(rewards, {"from": strategist})
 
     euler_plugin = strategist.deploy(GenericEuler, strategy, "GenericEulerLendnStake", staking_contract)
-    # assert morpho_plugin.apr() > 0
 
     strategy.addLender(euler_plugin, {"from": gov})
     assert strategy.numLenders() == 1

@@ -35,6 +35,7 @@ import "../Interfaces/Euler/RPow.sol";
 import "../Interfaces/UniswapInterfaces/V3/ISwapRouter.sol";
 import "../Interfaces/UniswapInterfaces/V3/IQuoterV2.sol";
 import "./GenericLenderBase.sol";
+import {ITradeFactory} from "../Interfaces/ySwaps/ITradeFactory.sol";
 
 interface IERC20Metadata is IERC20 {
     /**
@@ -86,6 +87,8 @@ contract GenericEuler is GenericLenderBase {
     uint256 public constant SECONDS_PER_YEAR = 365.2425 * 86400;
     uint256 public constant RESERVE_FEE_SCALE = 4_000_000_000; // must fit into a uint32
     uint256 private wantDecimals;
+    address public tradeFactory;
+    address public keep3r;
     //uint8 private constant eulDecimals = 18;
 
 
@@ -127,6 +130,33 @@ contract GenericEuler is GenericLenderBase {
         IEuler euler = IEuler(EULER);
         eulerIRM = IBaseIRM(euler.moduleIdToImplementation(moduleID));
     }
+
+    // borrowed from spalen0
+    // https://github.com/spalen0/Yearn-V2-Generic-Lender/blob/c29eace1bf4a0b58d424b860eb6a605341507177/contracts/GenericLender/GenericAaveMorpho.sol#L92
+    function cloneEulerLender(
+        address _strategy,
+        string memory _name,
+        address _stakingContract
+    ) external returns (address newLender) {
+        newLender = _clone(_strategy, _name);
+        GenericEuler(newLender).initialize(_stakingContract);
+    }
+
+    function setKeep3r(address _keep3r) external management {
+        keep3r = _keep3r;
+    }
+    modifier keepers() {
+        require(
+            msg.sender == address(keep3r) ||
+                msg.sender == address(strategy) ||
+                msg.sender == vault.governance() ||
+                msg.sender == IBaseStrategy(strategy).strategist(),
+            "!keepers"
+        );
+        _;
+    }
+
+
 
     //return current holdings
     function nav() external view override returns (uint256) {
@@ -203,6 +233,7 @@ contract GenericEuler is GenericLenderBase {
         return a.mul(_nav());
     }
     function withdraw(uint256 _amount) external override management returns (uint256) {
+        eStaking.getReward();
         return _withdraw(_amount);
     }
     function _withdraw(uint256 _amount) internal returns (uint256) {
@@ -373,6 +404,30 @@ contract GenericEuler is GenericLenderBase {
         uint256 supplySPY = totalBalancesUnderlying == 0 ? 0 : borrowSPY.mul(totalBorrows).div(totalBalancesUnderlying);
         supplySPY = supplySPY.mul(RESERVE_FEE_SCALE - eMarkets.reserveFee(address(want))).div(RESERVE_FEE_SCALE);
         supplyAPY = RPow.rpow(supplySPY + 1e27, SECONDS_PER_YEAR, 10**27) - 1e27;
+    }
+
+   // ---------------------- YSWAPS FUNCTIONS ----------------------
+    function setTradeFactory(address _tradeFactory) external onlyGovernance {
+        if (tradeFactory != address(0)) {
+            _removeTradeFactoryPermissions();
+        }
+
+        ITradeFactory tf = ITradeFactory(_tradeFactory);
+
+        IERC20(EUL).safeApprove(_tradeFactory, type(uint256).max);
+        tf.enable(address(EUL), address(want));
+        
+        tradeFactory = _tradeFactory;
+    }
+
+    function removeTradeFactoryPermissions() external management {
+        _removeTradeFactoryPermissions();
+    }
+
+    function _removeTradeFactoryPermissions() internal {
+        IERC20(EUL).safeApprove(tradeFactory, 0);
+        
+        tradeFactory = address(0);
     }
 }
 
