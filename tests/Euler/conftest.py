@@ -40,6 +40,18 @@ def staking_contract(token):
     yield stakingContract_addresses[token.symbol()]
 
 
+
+stakingApy = {
+    "WETH": 0.0171,  # eWETH
+    "USDT": 0.0201,  # eUSDT
+    "USDC": 0.0219,  # eUSDC
+}
+
+
+@pytest.fixture
+def staking_apy(token):
+    yield stakingApy[token.symbol()]
+
 whale_addresses = {
     "USDT": "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503",
     "USDC": "0x0a59649758aa4d66e25f08dd01271e891fe52199",
@@ -145,9 +157,15 @@ def weth(interface):
 
 
 @pytest.fixture
-def eul(interface):
+def reward_token(interface):
     token_address = "0xd9Fcd98c322942075A5C3860693e9f4f03AAE07b"
-    yield interface.IERC20(token_address)
+    yield interface.ERC20(token_address)
+
+
+@pytest.fixture
+def reward_token():
+    yield "0xd9Fcd98c322942075A5C3860693e9f4f03AAE07b"
+
 
 
 @pytest.fixture(scope="module", autouse=True)

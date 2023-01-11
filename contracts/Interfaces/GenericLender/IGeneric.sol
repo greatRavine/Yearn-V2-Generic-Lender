@@ -25,4 +25,5 @@ interface IGeneric {
     function hasAssets() external view returns (bool);
 
     function aprAfterDeposit(uint256 amount) external view returns (uint256);
+
 }

@@ -62,6 +62,7 @@ def test_clone(
     vault.deposit(depositAmount, {"from": strategist})
 
     assert cloned_strategy.estimatedTotalAssets() == 0
+    chain.sleep(10)
     chain.mine(1)
 
     tx = cloned_strategy.harvest({"from": strategist})

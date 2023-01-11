@@ -32,8 +32,6 @@ import {
 } from "../Interfaces/Euler/IStakingRewards.sol";
 import "../Interfaces/Euler/IEulerSimpleLens.sol";
 import "../Interfaces/Euler/RPow.sol";
-import "../Interfaces/UniswapInterfaces/V3/ISwapRouter.sol";
-import "../Interfaces/UniswapInterfaces/V3/IQuoterV2.sol";
 import "./GenericLenderBase.sol";
 import {ITradeFactory} from "../Interfaces/ySwaps/ITradeFactory.sol";
 
@@ -63,32 +61,31 @@ contract GenericEuler is GenericLenderBase {
     // "stakingRewards_eUSDC": "0xE5aFE81e63f0A52a3a03B922b30f73B8ce74D570",
     // "stakingRewards_eUSDT": "0x7882F919e3acCa984babd70529100F937d90F860",
     // "stakingRewards_eWETH": "0x229443bf7F1297192394B7127427DB172a5bDe9E"
-    address public constant EULER = address(0x27182842E098f60e3D576794A5bFFb0777E025d3);
+    address internal constant EULER = address(0x27182842E098f60e3D576794A5bFFb0777E025d3);
     IEulerMarkets internal constant eMarkets = IEulerMarkets(address(0x3520d5a913427E6F0D6A83E07ccD4A4da316e4d3));
-    IEulerEToken internal eToken;
-    IStakingRewards internal eStaking;
+    IEulerEToken public eToken;
+    IStakingRewards public eStaking;
     IEulerSimpleLens internal constant LENS = IEulerSimpleLens(address(0x5077B7642abF198b4a5b7C4BdCE4f03016C7089C));
-    IBaseIRM public eulerIRM;
+    IBaseIRM internal eulerIRM;
 
 
     //Uniswap pools & fees - if unused compiler just ignores...usually we only need EUL, WETH and want...
-    IERC20 public constant WETH9 = IERC20(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
-    IERC20 public constant USDC = IERC20(address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48));
-    IERC20 public constant USDT = IERC20(address(0xdAC17F958D2ee523a2206206994597C13D831ec7));
-    IERC20 public constant EUL = IERC20(address(0xd9Fcd98c322942075A5C3860693e9f4f03AAE07b));
-    IQuoterV2 public constant quoter = IQuoterV2(0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6);
-    ISwapRouter public constant uniswapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+    IERC20 internal constant WETH9 = IERC20(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
+    IERC20 internal constant USDC = IERC20(address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48));
+    IERC20 internal constant USDT = IERC20(address(0xdAC17F958D2ee523a2206206994597C13D831ec7));
+    IERC20 internal constant EUL = IERC20(address(0xd9Fcd98c322942075A5C3860693e9f4f03AAE07b));
 
 
     uint24 internal constant poolFee030 = 3000;
     uint24 internal constant poolFee005 = 500;
     uint24 internal constant poolFee001 = 100;
     uint24 internal constant poolFee100 = 10000;
-    uint256 public constant SECONDS_PER_YEAR = 365.2425 * 86400;
-    uint256 public constant RESERVE_FEE_SCALE = 4_000_000_000; // must fit into a uint32
-    uint256 private wantDecimals;
+    uint256 internal constant SECONDS_PER_YEAR = 365.2425 * 86400;
+    uint256 internal constant RESERVE_FEE_SCALE = 4_000_000_000; // must fit into a uint32
+    uint8 private wantDecimals;
     address public tradeFactory;
     address public keep3r;
+    uint256 private _minEarnedtoClaim = 2 * 1e20;
     //uint8 private constant eulDecimals = 18;
 
 
@@ -116,10 +113,15 @@ contract GenericEuler is GenericLenderBase {
 
         //Staking contracts
         eStaking = IStakingRewards(address(_stakingContract));
+        // getting correct eToken Contract (the token you get for lending collateral)
         eToken = IEulerEToken(address(eMarkets.underlyingToEToken(address(want))));
+        // approve staking contract for the eToken
         IERC20(address(eToken)).safeApprove(address(_stakingContract), type(uint).max); 
+        // approve EULER main contract
         want.safeApprove(address(EULER), type(uint256).max);
-        IERC20(address(EUL)).safeApprove(address(uniswapRouter), type(uint).max);
+        //IERC20(address(EUL)).safeApprove(address(uniswapRouter), type(uint).max);
+        //using tradefactory from ySwaps
+        // decimals are necessary apr calculation
         wantDecimals = IERC20Metadata(address(want)).decimals();
         // // unnecessary 
         // if (wantDecimals > 18) {
@@ -199,6 +201,8 @@ contract GenericEuler is GenericLenderBase {
         return lending_apr.add(staking_apr);
     }
 
+
+    // calculate lending APR if you deposit _amount (in want)
     function _lendingApr(uint256 _amount) public view returns (uint256) {
         if (_amount == 0) {
             (,, uint256 supplyAPY) = LENS.interestRates(address(want));
@@ -214,29 +218,39 @@ contract GenericEuler is GenericLenderBase {
         }
     }
 
+    // calculates staking APR if you deposit _amount (in want)
     function _stakingApr(uint256 _amount) public view returns (uint256) {
         // EULunits per second
         uint256 rewardRateAdj = eStaking.periodFinish() >= now ? eStaking.rewardRate() : 0;
         // total Want units staked
-        uint256 totalWantStaked = eToken.convertBalanceToUnderlying((eStaking.totalSupply()).add(_amount));
+        uint256 totalWantStaked = eToken.convertBalanceToUnderlying(eStaking.totalSupply()).add(_amount);
         //weiPerEul / weiPerWant = WantPerEul :)
         (uint256 weiPerEul,,) = LENS.getPriceFull(address(EUL));
         (uint256 weiPerWant,,) = LENS.getPriceFull(address(want));
         // rewardsRate[EULunits/s] * weiPerEul[wei/(10**18 EULunits)]/weiPerWant[wei/(10**wantDecimals WANTunits)] * SECONDS_PER_YEAR[s] / TotalSupplyWant[WANTunits] * SCALING_FACTOR_1e18
-        // weiPerEul[wei/(1e18 EULunits)]/weiPerWant[wei/(10**wantDecimals WANTunits)] * SCALING_FACTOR_1e18 = (10**wantDecimals * WANTunits) / (1e18 * EULunits) * SCALING_FACTOR_1e18
-        uint256 staking_apr = (10**wantDecimals).mul(weiPerEul).mul(rewardRateAdj).div(SECONDS_PER_YEAR).div(weiPerWant); // mul(1e18).div(SCALING_FACTOR_1e18)
+        uint256 staking_apr = (10**uint256(wantDecimals)).mul(weiPerEul).mul(rewardRateAdj).mul(SECONDS_PER_YEAR).div(weiPerWant).div(totalWantStaked); // div(1e18).mul(SCALING_FACTOR_1e18)
         return staking_apr;
     }
+
 
     function weightedApr() external view override returns (uint256) {
         uint256 a = _apr();
         return a.mul(_nav());
     }
+
+    // withdraw function ()
     function withdraw(uint256 _amount) external override management returns (uint256) {
-        eStaking.getReward();
+        // only claim 200 EUL or more - staking exit will also claim if you withdraw the whole balance
+        // you can withdraw 0 to trigger rewards claiming
+        if (eStaking.earned(address(this)) > _minEarnedtoClaim) {
+            eStaking.getReward();
+        }
         return _withdraw(_amount);
     }
     function _withdraw(uint256 _amount) internal returns (uint256) {
+        if (_amount == 0) {
+            return 0;
+        }
         uint256 local = want.balanceOf(address(this));
         // how much is in staked or lent out - in general we assume lent out is 0 -> all is staked
         // calculate how much to unstake
@@ -264,10 +278,12 @@ contract GenericEuler is GenericLenderBase {
     }
 
     function withdrawAll() external override management returns (bool) {
-        (,,,uint256 total) = getBalance();
-        _withdraw(total);
+        _exitStaking();
+        _withdrawLending(type(uint256).max);
+        uint256 looseBalance = want.balanceOf(address(this));
+        want.safeTransfer(address(strategy), looseBalance);
         (uint256 alocal,,,uint256 atotal) = getBalance();
-        return(alocal == atotal);
+        return(atotal == 0);
     }
 
     function hasAssets() external view override returns (bool) {
@@ -286,37 +302,6 @@ contract GenericEuler is GenericLenderBase {
         protected[2] = address(EUL);
         return protected;
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 // Internal funtions

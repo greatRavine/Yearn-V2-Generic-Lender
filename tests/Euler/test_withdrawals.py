@@ -46,7 +46,7 @@ def test_withdrawals_work(
 
     # TODO: remove all lenders -> to withdraw all amounts
     for j in status:
-        plugin = interface.IGeneric(j[3])
+        plugin = interface.IGenericLender(j[3])
         tx = strategy.safeRemoveLender(plugin, {"from": strategist})
 
     assert currency.balanceOf(plugin) == 0

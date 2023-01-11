@@ -1,7 +1,58 @@
 from itertools import count
-from brownie import Wei, reverts, ZERO_ADDRESS
+from brownie import Wei, reverts, ZERO_ADDRESS, interface
 import brownie
 
+
+
+
+def test_staking_apr(
+    chain,
+    whale,
+    gov,
+    strategist,
+    rando,
+    vault,
+    strategy,
+    currency,
+    amount,
+    GenericEuler,
+    staking_apy,
+    staking_contract,
+    reward_token
+):
+    # plugin to check additional functions
+    plugin = GenericEuler.at(strategy.lenders(0))
+
+    decimals = currency.decimals()
+    currency.approve(vault, 2**256 - 1, {"from": whale})
+    lens = interface.IEulerSimpleLens("0x5077B7642abF198b4a5b7C4BdCE4f03016C7089C")
+    staking = interface.IStakingRewards(staking_contract)
+    markets = interface.IEulerMarkets("0x3520d5a913427E6F0D6A83E07ccD4A4da316e4d3")
+    want = interface.ERC20(currency)
+    rewardsRate = staking.rewardRate()
+    etoken = interface.IEulerEToken(markets.underlyingToEToken(want.address))
+    totalSupplyinWant = etoken.convertBalanceToUnderlying(staking.totalSupply())
+    (weiPerEul,_,_) = lens.getPriceFull(reward_token)
+    (weiPerWant,_,_) = lens.getPriceFull(want.address)
+    WantPerEul = weiPerEul/weiPerWant
+    apr =  WantPerEul*rewardsRate/totalSupplyinWant*(60*60*24*365)*(10**decimals)/10**18
+    
+    deposit_limit = 100_000_000 * (10**decimals)
+    debt_ratio = 10_000
+    # sanity check on size:
+    stakingApy = plugin._stakingApr(0)/10**18
+
+    form = "{:.2%}"
+    formS = "{:,.0f}"
+    print(
+        f"Off-chain calculated staking APR: {formS.format(apr)}"
+        f"On-chain calculated staking APR: {formS.format(stakingApy)}"
+    )
+
+    # same as calculation in float
+    assert stakingApy > apr * 0.99 and stakingApy < apr * 1.01
+    # sanity on size .- assuming similar volume
+    assert stakingApy > staking_apy * 0.2 and stakingApy < staking_apy * 5
 
 def test_apr(
     chain,

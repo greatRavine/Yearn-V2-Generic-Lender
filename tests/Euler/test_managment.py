@@ -84,10 +84,6 @@ def test_setter_functions(
 
     with brownie.reverts():
         clone.setKeep3r(accounts[1], {"from": rando})
-    with brownie.reverts():
-        clone.setMaxGasForMatching(max_gas, {"from": rando})
-    with brownie.reverts():
-        clone.setRewardsDistributor(rewards_distributor, {"from": rando})
 
     clone.setKeep3r(accounts[1], {"from": strategist})
     assert clone.keep3r() == accounts[1]
