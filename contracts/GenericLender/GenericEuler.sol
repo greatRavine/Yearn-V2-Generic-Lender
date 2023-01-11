@@ -361,6 +361,9 @@ contract GenericEuler is GenericLenderBase {
             return;
         }
         uint256 balance = eToken.balanceOf(address(this));
+        if (balance == 0) { 
+            return;
+        }
         if (balance >= _amount) {
              eStaking.stake(_amount);
              emit DepositStaking(_amount, eToken.convertBalanceToUnderlying(_amount));     
@@ -375,6 +378,9 @@ contract GenericEuler is GenericLenderBase {
             return;
         }
         uint256 balance = want.balanceOf(address(this));
+        if (balance == 0) { 
+            return;
+        }
         if (balance >= _amount) {
             eToken.deposit(0, _amount);
             emit DepositLending(eToken.convertUnderlyingToBalance(_amount), _amount);
