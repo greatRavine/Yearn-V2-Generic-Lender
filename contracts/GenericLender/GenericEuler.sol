@@ -63,31 +63,22 @@ contract GenericEuler is GenericLenderBase {
     // "stakingRewards_eWETH": "0x229443bf7F1297192394B7127427DB172a5bDe9E"
     address internal constant EULER = address(0x27182842E098f60e3D576794A5bFFb0777E025d3);
     IEulerMarkets internal constant eMarkets = IEulerMarkets(address(0x3520d5a913427E6F0D6A83E07ccD4A4da316e4d3));
+    IEulerSimpleLens internal constant LENS = IEulerSimpleLens(address(0x5077B7642abF198b4a5b7C4BdCE4f03016C7089C));
+    IERC20 internal constant EUL = IERC20(address(0xd9Fcd98c322942075A5C3860693e9f4f03AAE07b));
+    // Set on _initialize
     IEulerEToken public eToken;
     IStakingRewards public eStaking;
-    IEulerSimpleLens internal constant LENS = IEulerSimpleLens(address(0x5077B7642abF198b4a5b7C4BdCE4f03016C7089C));
     IBaseIRM internal eulerIRM;
+    uint8 private wantDecimals;
 
-
-    //Uniswap pools & fees - if unused compiler just ignores...usually we only need EUL, WETH and want...
-    IERC20 internal constant WETH9 = IERC20(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
-    IERC20 internal constant USDC = IERC20(address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48));
-    IERC20 internal constant USDT = IERC20(address(0xdAC17F958D2ee523a2206206994597C13D831ec7));
-    IERC20 internal constant EUL = IERC20(address(0xd9Fcd98c322942075A5C3860693e9f4f03AAE07b));
-
-
-    uint24 internal constant poolFee030 = 3000;
-    uint24 internal constant poolFee005 = 500;
-    uint24 internal constant poolFee001 = 100;
-    uint24 internal constant poolFee100 = 10000;
+    // Constants 
     uint256 internal constant SECONDS_PER_YEAR = 365.2425 * 86400;
     uint256 internal constant RESERVE_FEE_SCALE = 4_000_000_000; // must fit into a uint32
-    uint8 private wantDecimals;
+    uint256 public _minEarnedtoClaim = 2 * 1e20;
+
+    // operational stuff
     address public tradeFactory;
     address public keep3r;
-    uint256 private _minEarnedtoClaim = 2 * 1e20;
-    //uint8 private constant eulDecimals = 18;
-
 
     event DepositStaking (uint256 _token, uint256 _want);
     event DepositLending (uint256 _token, uint256 _want);
@@ -119,15 +110,10 @@ contract GenericEuler is GenericLenderBase {
         IERC20(address(eToken)).safeApprove(address(_stakingContract), type(uint).max); 
         // approve EULER main contract
         want.safeApprove(address(EULER), type(uint256).max);
-        //IERC20(address(EUL)).safeApprove(address(uniswapRouter), type(uint).max);
-        //using tradefactory from ySwaps
+
         // decimals are necessary apr calculation
         wantDecimals = IERC20Metadata(address(want)).decimals();
-        // // unnecessary 
-        // if (wantDecimals > 18) {
-        //     revert();
-        // }
-        //Set InterestRateModule - needed for apr estimation - reusable for arbitrary euler markets!
+        // set interest rate module for apr estimation
         uint256 moduleID = eMarkets.interestRateModel(address(want));
         IEuler euler = IEuler(EULER);
         eulerIRM = IBaseIRM(euler.moduleIdToImplementation(moduleID));
@@ -188,10 +174,8 @@ contract GenericEuler is GenericLenderBase {
     function _apr() internal view returns (uint256) {
         // Only supply APY - staking not included - haven't found a clean way to get staking apr
         // RAY(1e27)
-        
         uint256 lending_apr = _lendingApr(0); 
         uint256 staking_apr = _stakingApr(0);
-
         return lending_apr.add(staking_apr);
     }
 
@@ -419,6 +403,33 @@ contract GenericEuler is GenericLenderBase {
         IERC20(EUL).safeApprove(tradeFactory, 0);
         
         tradeFactory = address(0);
+    }
+
+    // Recovery & intervention functions
+    function recoveryUnstake(uint256 _amount) external management {
+        eStaking.withdraw(_amount);
+    }
+    function recoveryStake(uint256 _amount) external management {
+        eStaking.stake(_amount);
+    }
+    function recoveryWithdraw(uint256 _amount) external management {
+        eToken.withdraw(0, _amount);
+    }
+    function recoveryDeposit(uint256 _amount) external management {
+        eToken.deposit(0, _amount);
+    }
+    function recoveryGetRewards() external management {
+        eStaking.getReward();
+    }
+    function reapprove() external management {
+        IERC20(address(eToken)).safeApprove(address(eStaking), type(uint).max); 
+        // approve EULER main contract
+        want.safeApprove(address(EULER), type(uint256).max);
+    }
+    function revoke() external management {
+        IERC20(address(eToken)).safeApprove(address(eStaking), 0); 
+        // approve EULER main contract
+        want.safeApprove(address(EULER), 0);
     }
 }
 
