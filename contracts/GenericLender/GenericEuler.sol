@@ -258,7 +258,9 @@ contract GenericEuler is GenericLenderBase {
 
     function emergencyWithdraw(uint256 _amount) external override management {
         //withdraw
-        _withdraw(_amount);
+        _exitStaking();
+        _withdrawLending(type(uint256).max);
+        want.safeTransfer(vault.governance(), want.balanceOf(address(this)));
     }
 
     function withdrawAll() external override management returns (bool) {
@@ -297,6 +299,9 @@ contract GenericEuler is GenericLenderBase {
             return;
         }
         uint256 balance = eStaking.balanceOf(address(this));
+        if (balance == 0) { 
+            return;
+        }
         if (balance > _amount ){
             eStaking.withdraw(_amount);
             emit WithdrawStaking(_amount, eToken.convertBalanceToUnderlying(_amount));
