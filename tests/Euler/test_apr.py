@@ -22,16 +22,18 @@ def test_staking_apr(
 ):
     # plugin to check additional functions
     plugin = GenericEuler.at(strategy.lenders(0))
+    if (staking_contract is None):
+        return
 
+    want = interface.ERC20(currency)
     decimals = currency.decimals()
     currency.approve(vault, 2**256 - 1, {"from": whale})
     lens = interface.IEulerSimpleLens("0x5077B7642abF198b4a5b7C4BdCE4f03016C7089C")
-    staking = interface.IStakingRewards(staking_contract)
     markets = interface.IEulerMarkets("0x3520d5a913427E6F0D6A83E07ccD4A4da316e4d3")
-    want = interface.ERC20(currency)
-    rewardsRate = staking.rewardRate()
     etoken = interface.IEulerEToken(markets.underlyingToEToken(want.address))
-    totalSupplyinWant = etoken.convertBalanceToUnderlying(staking.totalSupply())
+    staking = interface.IStakingRewards(staking_contract)
+    rewardsRate = staking.rewardRate()
+    totalSupplyinWant = etoken.convertBalanceToUnderlying(staking.totalSupply())    
     (weiPerEul,_,_) = lens.getPriceFull(reward_token)
     (weiPerWant,_,_) = lens.getPriceFull(want.address)
     WantPerEul = weiPerEul/weiPerWant

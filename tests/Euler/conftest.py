@@ -6,6 +6,8 @@ token_addresses = {
     "USDT": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
     "USDC": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
     "WETH": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+    "YFI": "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e",
+    "LUSD": "0x5f98805a4e8be255a32880fdec7f6728c6568ba0"
 }
 
 
@@ -15,6 +17,8 @@ token_addresses = {
         "USDC",
         "USDT",
         "WETH",
+        "YFI",
+        # "LUSD"
     ],
     scope="session",
     autouse=True,
@@ -37,7 +41,10 @@ stakingContract_addresses = {
 
 @pytest.fixture
 def staking_contract(token):
-    yield stakingContract_addresses[token.symbol()]
+    if token.symbol() in stakingContract_addresses:
+        yield stakingContract_addresses[token.symbol()]
+    else:
+        yield None
 
 
 
@@ -50,12 +57,17 @@ stakingApy = {
 
 @pytest.fixture
 def staking_apy(token):
-    yield stakingApy[token.symbol()]
+    if token.symbol() in stakingApy:
+        yield stakingApy[token.symbol()]
+    else:
+        yield None
 
 whale_addresses = {
     "USDT": "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503",
     "USDC": "0x0a59649758aa4d66e25f08dd01271e891fe52199",
     "WETH": "0x2f0b23f53734252bda2277357e97e1517d6b042a",
+    "YFI": "0xfeb4acf3df3cdea7399794d0869ef76a6efaff52",
+#    "LUSD": "0x66017d22b0f8556afdd19fc67041899eb65a21bb"
 }
 
 
@@ -69,6 +81,8 @@ token_prices = {
     "WETH": 1_200,
     "USDT": 1,
     "USDC": 1,
+    "YFI": 6_500,
+#    "LUSD": 1
 }
 
 
@@ -198,8 +212,11 @@ def strategy(
     strategy.setWithdrawalThreshold(0, {"from": gov})
     strategy.setRewards(rewards, {"from": strategist})
 
-    euler_plugin = strategist.deploy(GenericEuler, strategy, "GenericEulerLendnStake", staking_contract)
-
+    euler_plugin = strategist.deploy(GenericEuler, strategy, "GenericEulerLendnStake")
+    assert euler_plugin.hasStaking() == False 
+    if staking_contract is not None:
+        euler_plugin.activateStaking(staking_contract,2*1e20,{"from": strategist})
+        assert euler_plugin.hasStaking() == True
     strategy.addLender(euler_plugin, {"from": gov})
     assert strategy.numLenders() == 1
 

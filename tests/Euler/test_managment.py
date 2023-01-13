@@ -72,11 +72,18 @@ def test_setter_functions(
         plugin.setKeep3r(accounts[1], {"from": rando})
 
     plugin.setKeep3r(accounts[1], {"from": strategist})
-
     assert plugin.keep3r() == accounts[1]
 
+    if plugin.hasStaking():
+        assert plugin.minEarnedToClaim() > 0
+        newThreshold = 3 * 1e20
+        plugin.setRewardThreshold(newThreshold, {"from": strategist})
+        assert plugin.minEarnedToClaim() == newThreshold
+        plugin.deactivateStaking({"from": strategist})
+        assert plugin.hasStaking() == False 
+    
     tx = plugin.cloneEulerLender(
-        strategy, "CloneGC", staking_contract, {"from": strategist}
+        strategy, "CloneGC", {"from": strategist}
     )
     clone = GenericEuler.at(tx.return_value)
 
@@ -84,6 +91,8 @@ def test_setter_functions(
 
     with brownie.reverts():
         clone.setKeep3r(accounts[1], {"from": rando})
+
+    assert clone.hasStaking() == False 
 
     clone.setKeep3r(accounts[1], {"from": strategist})
     assert clone.keep3r() == accounts[1]

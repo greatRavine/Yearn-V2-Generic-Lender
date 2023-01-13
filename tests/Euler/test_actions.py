@@ -89,7 +89,6 @@ def test_normal_activity(
 
     assert strategy.estimatedTotalAssets() == 0
     chain.mine(1)
-
     chain.sleep(1)
     strategy.harvest({"from": strategist})
 

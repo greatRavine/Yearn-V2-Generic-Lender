@@ -33,17 +33,21 @@ def test_clone(
 
     # Clone the Euler lender
     original_comp = GenericEuler.at(strategy.lenders(strategy.numLenders() - 1))
-    cloned_name = "Cloned_EulerLendnStake_" + currency.symbol()
+    cloned_name = "Cloned_GenericEuler_" + currency.symbol()
     tx = original_comp.cloneEulerLender(
-        cloned_strategy, cloned_name, staking_contract, {"from": gov}
+        cloned_strategy, cloned_name, {"from": gov}
     )
     cloned_lender = GenericEuler.at(tx.return_value)
     assert cloned_lender.lenderName() == cloned_name
+    # Check and set staking
+    assert cloned_lender.hasStaking() == False 
+    if staking_contract is not None:
+        cloned_lender.activateStaking(staking_contract,2*1e20,{"from": strategist})
+        assert cloned_lender.hasStaking() == True
 
     cloned_strategy.addLender(cloned_lender, {"from": gov})
-
     with brownie.reverts():
-        cloned_lender.initialize(staking_contract, {"from": gov})
+        cloned_lender.initialize({"from": gov})
 
     starting_balance = currency.balanceOf(strategist)
     decimals = currency.decimals()
@@ -75,7 +79,7 @@ def test_clone(
     whale_deposit = amount / 10
     vault.deposit(whale_deposit, {"from": whale})
     chain.mine(1)
-
+    chain.sleep(10)
     tx2 = cloned_strategy.harvest({"from": strategist})
 
     for i in range(15):

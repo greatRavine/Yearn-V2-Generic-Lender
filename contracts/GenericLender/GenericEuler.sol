@@ -35,25 +35,7 @@ import "../Interfaces/Euler/RPow.sol";
 import "./GenericLenderBase.sol";
 import {ITradeFactory} from "../Interfaces/ySwaps/ITradeFactory.sol";
 
-interface IERC20Metadata is IERC20 {
-    /**
-     * @dev Returns the name of the token.
-     */
-    function name() external view returns (string memory);
-
-    /**
-     * @dev Returns the symbol of the token.
-     */
-    function symbol() external view returns (string memory);
-
-    /**
-     * @dev Returns the decimals places of the token.
-     */
-    function decimals() external view returns (uint8);
-}
-
 contract GenericEuler is GenericLenderBase {
-    using SafeERC20 for IERC20Metadata;
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
@@ -69,17 +51,18 @@ contract GenericEuler is GenericLenderBase {
     IEulerEToken public eToken;
     IStakingRewards public eStaking;
     IBaseIRM internal eulerIRM;
-    uint8 private wantDecimals;
+    bool public hasStaking;
 
     // Constants 
     uint256 internal constant SECONDS_PER_YEAR = 365.2425 * 86400;
     uint256 internal constant RESERVE_FEE_SCALE = 4_000_000_000; // must fit into a uint32
-    uint256 public _minEarnedtoClaim = 2 * 1e20;
+    uint256 public minEarnedToClaim;
 
     // operational stuff
     address public tradeFactory;
     address public keep3r;
 
+    // events will be removed for prod
     event DepositStaking (uint256 _token, uint256 _want);
     event DepositLending (uint256 _token, uint256 _want);
     event WithdrawStaking (uint256 _token, uint256 _want);
@@ -88,46 +71,60 @@ contract GenericEuler is GenericLenderBase {
     // initialisation and constructor - passing staking contracts as argument 
     constructor(
         address _strategy,
-        string memory name,
-        address _stakingContract
+        string memory name
     ) public GenericLenderBase(_strategy, name) {
-        _initialize(_stakingContract);
+        _initialize();
     }
-    function initialize(address _stakingContract) external {
-        _initialize(_stakingContract);
+    function initialize() external {
+        _initialize();
     }
-    function _initialize(address _stakingContract) internal {
-        require(
-            address(eStaking) == address(0),
-            "GenericEulerLendnStake already initialized"
-        );
-
-        //Staking contracts
-        eStaking = IStakingRewards(address(_stakingContract));
+    function _initialize() internal {
+        require(address(eToken) == address(0), "GenericEuler already initialized");
+        hasStaking = false;
         // getting correct eToken Contract (the token you get for lending collateral)
         eToken = IEulerEToken(address(eMarkets.underlyingToEToken(address(want))));
-        // approve staking contract for the eToken
-        IERC20(address(eToken)).safeApprove(address(_stakingContract), type(uint).max); 
+    
         // approve EULER main contract
         want.safeApprove(address(EULER), type(uint256).max);
 
-        // decimals are necessary apr calculation
-        wantDecimals = IERC20Metadata(address(want)).decimals();
         // set interest rate module for apr estimation
         uint256 moduleID = eMarkets.interestRateModel(address(want));
         IEuler euler = IEuler(EULER);
         eulerIRM = IBaseIRM(euler.moduleIdToImplementation(moduleID));
     }
 
+
+
+    // enable Staking
+    function activateStaking(address _stakingContract, uint256  _minEarnedToClaim) external management {
+        //set Staking contract and approve - Staking cannot be reset for security
+        require (address(eStaking)==address(0), "Staking already initialized");
+        minEarnedToClaim = _minEarnedToClaim;
+        eStaking = IStakingRewards(address(_stakingContract));
+        IERC20(address(eToken)).safeApprove(address(_stakingContract), type(uint).max);
+        hasStaking = true;
+    }
+    // Disable staking
+    function deactivateStaking() external management {
+        require(address(eStaking) != address(0), "Staking is not enabled");
+        //disable staking
+        _exitStaking();
+        IERC20(address(eToken)).safeApprove(address(eStaking), 0);
+        hasStaking = false;
+        require(eStaking.balanceOf(address(this)) == 0);
+    }
+    function setRewardThreshold(uint256  _minEarnedToClaim) external management{
+        minEarnedToClaim = _minEarnedToClaim;
+    }
+
     // borrowed from spalen0
     // https://github.com/spalen0/Yearn-V2-Generic-Lender/blob/c29eace1bf4a0b58d424b860eb6a605341507177/contracts/GenericLender/GenericAaveMorpho.sol#L92
     function cloneEulerLender(
         address _strategy,
-        string memory _name,
-        address _stakingContract
+        string memory _name
     ) external returns (address newLender) {
         newLender = _clone(_strategy, _name);
-        GenericEuler(newLender).initialize(_stakingContract);
+        GenericEuler(newLender).initialize();
     }
 
     function setKeep3r(address _keep3r) external management {
@@ -158,7 +155,7 @@ contract GenericEuler is GenericLenderBase {
     function getBalance() public view returns (uint256, uint256, uint256, uint256) {
         uint256 local = want.balanceOf(address(this));
         // staked in want
-        uint256 staked = eToken.convertBalanceToUnderlying(eStaking.balanceOf(address(this)));
+        uint256 staked = hasStaking ? eToken.convertBalanceToUnderlying(eStaking.balanceOf(address(this))) : 0;
         // lent in want - should be zero
         uint256 lent = eToken.balanceOfUnderlying(address(this));
         // total amount in want
@@ -204,6 +201,9 @@ contract GenericEuler is GenericLenderBase {
 
     // calculates staking APR if you deposit _amount (in want)
     function _stakingApr(uint256 _amount) public view returns (uint256) {
+        if (!hasStaking) {
+            return 0;
+        }
         // EULunits per second
         uint256 rewardRateAdj = eStaking.periodFinish() >= now ? eStaking.rewardRate() : 0;
         // total Want units staked
@@ -212,7 +212,7 @@ contract GenericEuler is GenericLenderBase {
         (uint256 weiPerEul,,) = LENS.getPriceFull(address(EUL));
         (uint256 weiPerWant,,) = LENS.getPriceFull(address(want));
         // rewardsRate[EULunits/s] * weiPerEul[wei/(10**18 EULunits)]/weiPerWant[wei/(10**wantDecimals WANTunits)] * SECONDS_PER_YEAR[s] / TotalSupplyWant[WANTunits] * SCALING_FACTOR_1e18
-        uint256 staking_apr = (10**uint256(wantDecimals)).mul(weiPerEul).mul(rewardRateAdj).mul(SECONDS_PER_YEAR).div(weiPerWant).div(totalWantStaked); // div(1e18).mul(SCALING_FACTOR_1e18)
+        uint256 staking_apr = (10**uint256(vault.decimals())).mul(weiPerEul).mul(rewardRateAdj).mul(SECONDS_PER_YEAR).div(weiPerWant).div(totalWantStaked); // div(1e18).mul(SCALING_FACTOR_1e18)
         return staking_apr;
     }
 
@@ -226,33 +226,72 @@ contract GenericEuler is GenericLenderBase {
     function withdraw(uint256 _amount) external override management returns (uint256) {
         // only claim 200 EUL or more - staking exit will also claim if you withdraw the whole balance
         // you can withdraw 0 to trigger rewards claiming
-        if (eStaking.earned(address(this)) > _minEarnedtoClaim) {
-            eStaking.getReward();
-        }
         return _withdraw(_amount);
     }
+
+
+
+
+    // claim Staking rewards via trade handler
+    function claimRewards() external keepers {
+        _claimRewards();
+    }
+
+    function _claimRewards() internal {
+        if (!hasStaking) {
+            return;
+        }
+        // if(eStaking.earned(address(this)) > _minEarnedToClaim) {
+        //     eStaking.getReward();     
+        // }
+        eStaking.getReward();      
+    }
+
+
+
+    // Alternative with harvest triggers
+
+    // function harvest() external keepers {
+    //     _claimRewards();
+    // }
+
+    // function harvestTrigger(uint256 /*callCost*/) external view returns(bool) {
+    //     if(!hasStaking) return false;
+    //     if(eStaking.earned(address(this)) > _minEarnedToClaim) return true;
+    // }
+
+
+
+
+
     function _withdraw(uint256 _amount) internal returns (uint256) {
         if (_amount == 0) {
             return 0;
         }
         uint256 local = want.balanceOf(address(this));
-        // how much is in staked or lent out - in general we assume lent out is 0 -> all is staked
-        // calculate how much to unstake
-        uint256 toUnwind = _amount > local ? _amount - local : 0;
-        uint256 toFreeETokens = eToken.convertUnderlyingToBalance(toUnwind);
-        //unstake ToUnwind and withdraw - we withdraw as much as possible as we assume lent == 0
-        // if lent > 0 - it is now 0 and our expectation hold true again
-        _withdrawStaking(toFreeETokens);
-        _withdrawLending(type(uint256).max);
-        uint256 looseBalance = want.balanceOf(address(this));
-        want.safeTransfer(address(strategy), looseBalance);
-        return looseBalance;
+        if (_amount > local) { 
+            if (hasStaking) {
+                _withdrawStaking(_amount - local);
+                _withdrawLending(type(uint256).max);
+                //unstake what is needed and withdraw - we withdraw as much from lending as possible as we assume lent == 0
+                // if lent > 0 - it is now 0 and our expectation holds true again
+            } else {
+                _withdrawLending(_amount - local); 
+            }
+            uint256 looseBalance = want.balanceOf(address(this));
+            want.safeTransfer(address(strategy), looseBalance);
+            return looseBalance;
+
+        } else {
+           want.safeTransfer(address(strategy), local); 
+           return local;
+        }
     }
 
     function deposit() external override management {
         //deposit and stake all!
-        _depositLending(type(uint256).max);
-        _depositStaking(type(uint256).max);
+        _depositLending();
+        _depositStaking();
     }
 
 
@@ -295,21 +334,29 @@ contract GenericEuler is GenericLenderBase {
     // withdrawStaking will withdraw as much as possible if amount > balance
     // no liquidity issues with staking possible
     function  _withdrawStaking(uint256 _amount) internal {
+        if (!hasStaking) {
+            return;
+        }
         if (_amount == 0) {
             return;
         }
         uint256 balance = eStaking.balanceOf(address(this));
-        if (balance == 0) { 
+        // for small values the conversion can turn out to be 0.
+        uint256 eTokenAmount = eToken.convertUnderlyingToBalance(_amount);
+        if (balance == 0 || eTokenAmount == 0) { 
             return;
         }
-        if (balance > _amount ){
-            eStaking.withdraw(_amount);
-            emit WithdrawStaking(_amount, eToken.convertBalanceToUnderlying(_amount));
+        if (balance > eTokenAmount ){
+            eStaking.withdraw(eTokenAmount);
+            emit WithdrawStaking(eTokenAmount, _amount);
         } else  {
             _exitStaking();
         }
     }
     function  _exitStaking() internal {
+        if (!hasStaking) {
+            return;
+        }
         uint256 balance = eStaking.balanceOf(address(this));
         if (balance > 0){
             eStaking.exit();
@@ -329,7 +376,7 @@ contract GenericEuler is GenericLenderBase {
             return;
         }
         // factor in liquidity of lending pool
-        uint256 liquidity = IERC20(address(want)).balanceOf(EULER);
+        uint256 liquidity = want.balanceOf(EULER);
         if (_amount > liquidity) {
             _amount = liquidity;
         }
@@ -344,39 +391,26 @@ contract GenericEuler is GenericLenderBase {
  
         }
     }
-    //deposit as much as possible if _amount > balance
-    function  _depositStaking(uint256 _amount) internal {
-        if (_amount == 0) {
+    //deposit as much as possible
+    function  _depositStaking() internal {
+        if (!hasStaking) {
             return;
-        }
+        }        
         uint256 balance = eToken.balanceOf(address(this));
         if (balance == 0) { 
             return;
         }
-        if (balance >= _amount) {
-             eStaking.stake(_amount);
-             emit DepositStaking(_amount, eToken.convertBalanceToUnderlying(_amount));     
-        } else {
-            eStaking.stake(balance);
-            emit DepositStaking(balance, eToken.convertBalanceToUnderlying(balance));
-        }
+        eStaking.stake(balance);
+        emit DepositStaking(balance, eToken.convertBalanceToUnderlying(balance));
     }
-    //deposit as much as possible if _amount > balance
-    function  _depositLending(uint256 _amount) internal {
-        if (_amount == 0) {
-            return;
-        }
+    //deposit as much as possible
+    function  _depositLending() internal {
         uint256 balance = want.balanceOf(address(this));
         if (balance == 0) { 
             return;
         }
-        if (balance >= _amount) {
-            eToken.deposit(0, _amount);
-            emit DepositLending(eToken.convertUnderlyingToBalance(_amount), _amount);
-        } else {
-            eToken.deposit(0, balance);
-            emit DepositLending(eToken.convertUnderlyingToBalance(balance), balance);  
-        }    
+        eToken.deposit(0, balance);
+        emit DepositLending(eToken.convertUnderlyingToBalance(balance), balance);   
     }
     // compute APYs - borrowed from:
     // https://github.com/euler-xyz/euler-contracts/blob/6d1d7d11fc6cc74a92feded055315e562eaf9cb8/contracts/views/EulerSimpleLens.sol#L187
@@ -411,21 +445,6 @@ contract GenericEuler is GenericLenderBase {
     }
 
     // Recovery & intervention functions
-    function recoveryUnstake(uint256 _amount) external management {
-        eStaking.withdraw(_amount);
-    }
-    function recoveryStake(uint256 _amount) external management {
-        eStaking.stake(_amount);
-    }
-    function recoveryWithdraw(uint256 _amount) external management {
-        eToken.withdraw(0, _amount);
-    }
-    function recoveryDeposit(uint256 _amount) external management {
-        eToken.deposit(0, _amount);
-    }
-    function recoveryGetRewards() external management {
-        eStaking.getReward();
-    }
     function reapprove() external management {
         IERC20(address(eToken)).safeApprove(address(eStaking), type(uint).max); 
         // approve EULER main contract
