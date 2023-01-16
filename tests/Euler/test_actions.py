@@ -99,7 +99,7 @@ def test_normal_activity(
     # whale deposits as well
     whale_deposit = amount
     vault.deposit(whale_deposit, {"from": whale})
-
+    chain.mine(1)
     chain.sleep(1)
     strategy.harvest({"from": strategist})
 

@@ -56,6 +56,10 @@ contract GenericEuler is GenericLenderBase {
     // Constants 
     uint256 internal constant SECONDS_PER_YEAR = 365.2425 * 86400;
     uint256 internal constant RESERVE_FEE_SCALE = 4_000_000_000; // must fit into a uint32
+
+
+    // not used with claim rewards - only used for harvest with harvest trigger!
+    // to be removed if harvest & harvest trigger are not used 
     uint256 public minEarnedToClaim;
 
     // operational stuff
@@ -113,6 +117,10 @@ contract GenericEuler is GenericLenderBase {
         hasStaking = false;
         require(eStaking.balanceOf(address(this)) == 0);
     }
+
+
+    // not used with claim rewards - only used for harvest with harvest trigger!
+    // to be removed if harvest & harvest trigger are not used 
     function setRewardThreshold(uint256  _minEarnedToClaim) external management{
         minEarnedToClaim = _minEarnedToClaim;
     }

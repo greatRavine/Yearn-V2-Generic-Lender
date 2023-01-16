@@ -7,7 +7,8 @@ token_addresses = {
     "USDC": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
     "WETH": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
     "YFI": "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e",
-    "LUSD": "0x5f98805a4e8be255a32880fdec7f6728c6568ba0"
+    "LUSD": "0x5f98805a4e8be255a32880fdec7f6728c6568ba0",
+    "RAI": "0x03ab458634910aad20ef5f1c8ee96f1d6ac54919"
 }
 
 
@@ -18,7 +19,8 @@ token_addresses = {
         "USDT",
         "WETH",
         "YFI",
-        # "LUSD"
+        "LUSD",
+        "RAI"
     ],
     scope="session",
     autouse=True,
@@ -37,7 +39,6 @@ stakingContract_addresses = {
     "USDT": "0x7882F919e3acCa984babd70529100F937d90F860",  # eUSDT
     "USDC": "0xE5aFE81e63f0A52a3a03B922b30f73B8ce74D570",  # eUSDC
 }
-
 
 @pytest.fixture
 def staking_contract(token):
@@ -67,7 +68,8 @@ whale_addresses = {
     "USDC": "0x0a59649758aa4d66e25f08dd01271e891fe52199",
     "WETH": "0x2f0b23f53734252bda2277357e97e1517d6b042a",
     "YFI": "0xfeb4acf3df3cdea7399794d0869ef76a6efaff52",
-#    "LUSD": "0x66017d22b0f8556afdd19fc67041899eb65a21bb"
+    "LUSD": "0x66017d22b0f8556afdd19fc67041899eb65a21bb",
+    "RAI": "0xa4b8339d2162125b33a667b0d40ac5dec27e924b"
 }
 
 
@@ -82,7 +84,8 @@ token_prices = {
     "USDT": 1,
     "USDC": 1,
     "YFI": 6_500,
-#    "LUSD": 1
+    "LUSD": 1,
+    "RAI":2.8
 }
 
 
