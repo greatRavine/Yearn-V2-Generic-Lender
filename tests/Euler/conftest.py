@@ -68,8 +68,8 @@ whale_addresses = {
     "USDC": "0x0a59649758aa4d66e25f08dd01271e891fe52199",
     "WETH": "0x2f0b23f53734252bda2277357e97e1517d6b042a",
     "YFI": "0xfeb4acf3df3cdea7399794d0869ef76a6efaff52",
-    "LUSD": "0x66017d22b0f8556afdd19fc67041899eb65a21bb",
-    "RAI": "0xa4b8339d2162125b33a667b0d40ac5dec27e924b"
+    "LUSD": "0x6f71fc3925605f06672409c71844ead4b700af5f",
+    "RAI": "0x537037c5ae805b9d4cecab5ee07f12a8e59a15b2"
 }
 
 
@@ -96,8 +96,8 @@ def amount(token, whale):
     amount = ten_million * 10 ** token.decimals()
     # # In order to get some funds for the token you are about to use,
     # # it impersonate a whale address
-    if amount > token.balanceOf(whale):
-        amount = token.balanceOf(whale)
+    if 2*amount > token.balanceOf(whale):
+        amount = token.balanceOf(whale)//2
     # token.transfer(user, amount, {"from": token_whale})
     yield amount
 

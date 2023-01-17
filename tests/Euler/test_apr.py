@@ -82,7 +82,7 @@ def test_apr(
     vault.setDepositLimit(deposit_limit, {"from": gov})
     form = "{:.2%}"
     formS = "{:,.0f}"
-    firstDeposit = amount
+    firstDeposit = amount//2
     predictedApr = strategy.estimatedFutureAPR(firstDeposit)
     tx = strategy.estimatedFutureAPR.transact(firstDeposit, {"from": gov})
     print(
