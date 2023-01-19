@@ -1,5 +1,5 @@
 import pytest
-from brownie import Wei, config, Contract
+from brownie import Wei, config, Contract, interface
 
 
 token_addresses = {
@@ -73,6 +73,11 @@ whale_addresses = {
 }
 
 
+
+@pytest.fixture
+def weth_whale(accounts, token):
+    yield accounts.at("0x2f0b23f53734252bda2277357e97e1517d6b042a", force=True)
+
 @pytest.fixture
 def whale(accounts, token):
     acc = accounts.at(whale_addresses[token.symbol()], force=True)
@@ -116,7 +121,35 @@ def euler_lending_pool():
     yield "0x27182842E098f60e3D576794A5bFFb0777E025d3"
 
 
+@pytest.fixture()
+def markets(interface):
+    markets = interface.IEulerMarkets("0x3520d5a913427E6F0D6A83E07ccD4A4da316e4d3")
+    yield markets
 
+@pytest.fixture()
+def lens(interface):
+    lens = interface.IEulerSimpleLens("0x5077B7642abF198b4a5b7C4BdCE4f03016C7089C")
+    yield lens
+
+@pytest.fixture()
+def etoken(currency, markets, interface):
+    etoken = interface.IEulerEToken(markets.underlyingToEToken(currency.address))
+    yield etoken
+
+@pytest.fixture()
+def dtoken(currency, markets, interface):
+    dtoken = interface.IEulerDToken(markets.underlyingToDToken(currency.address))
+    yield dtoken
+    
+@pytest.fixture()
+def wethetoken(markets, interface):
+    etoken = interface.IEulerEToken(markets.underlyingToEToken("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"))
+    yield etoken
+
+@pytest.fixture()
+def wethdtoken(markets, interface):
+    dtoken = interface.IEulerDToken(markets.underlyingToDToken("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"))
+    yield dtoken
 
 @pytest.fixture()
 def strategist(accounts, whale, currency, amount):

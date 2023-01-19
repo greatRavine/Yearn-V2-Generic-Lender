@@ -305,8 +305,8 @@ contract GenericEuler is GenericLenderBase {
 
     function emergencyWithdraw(uint256 _amount) external override management {
         //withdraw
-        _exitStaking();
-        _withdrawLending(type(uint256).max);
+        _withdrawStaking(_amount);
+        _withdrawLending(_amount);
         want.safeTransfer(vault.governance(), want.balanceOf(address(this)));
     }
 
