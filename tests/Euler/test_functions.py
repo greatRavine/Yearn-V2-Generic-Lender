@@ -15,16 +15,17 @@ def test_staking_apr(
     strategist,
     rando,
     vault,
-    strategy,
+    strategy_test,
     currency,
     amount,
-    GenericEuler,
+    GenericEulerTest,
     staking_apy,
     staking_contract,
     reward_token
 ):
     # plugin to check additional functions
-    plugin = GenericEuler.at(strategy.lenders(0))
+    strategy = strategy_test
+    plugin = GenericEulerTest.at(strategy.lenders(0))
     if (staking_contract is None):
         return
 
@@ -36,7 +37,7 @@ def test_staking_apr(
     staking = interface.IStakingRewards(staking_contract)
     rewardsRate = staking.rewardRate()
     totalSupplyinWant = etoken.convertBalanceToUnderlying(staking.totalSupply())    
-    (weiPerEul,_,_) = lens.getPriceFull(reward_token)
+    (weiPerEul,_,_) = lens.getPriceFull(reward_token.address)
     (weiPerWant,_,_) = lens.getPriceFull(currency.address)
     WantPerEul = weiPerEul/weiPerWant
     apr =  WantPerEul*rewardsRate/totalSupplyinWant*(60*60*24*365)*(10**decimals)/10**18
@@ -44,7 +45,7 @@ def test_staking_apr(
     deposit_limit = 100_000_000 * (10**decimals)
     debt_ratio = 10_000
     # sanity check on size:
-    stakingApy = plugin._stakingApr(0)/10**18
+    stakingApy = plugin.stakingApr(0)/10**18
 
     form = "{:.2%}"
     formS = "{:,.0f}"
@@ -66,13 +67,14 @@ def test_lending_apr(
     strategist,
     rando,
     vault,
-    strategy,
+    strategy_test,
     currency,
     amount,
-    GenericEuler
+    GenericEulerTest
 ):
     # plugin to check additional functions
-    plugin = GenericEuler.at(strategy.lenders(0))
+    strategy = strategy_test
+    plugin = GenericEulerTest.at(strategy.lenders(0))
     form = "{:.2%}"
     formS = "{:,.0f}"
     depositAmount = amount//2
@@ -84,7 +86,7 @@ def test_lending_apr(
     # in RAY 1e27
     (_,_,supplyAPY) = lens.interestRates(currency.address)
     # in 1e18 -> scale up
-    estimatedSupplyAPY = plugin._lendingApr(0)*1e9
+    estimatedSupplyAPY = plugin.lendingApr(0)*1e9
     assert estimatedSupplyAPY == approx(supplyAPY, rel=1e-3)
     print(
         f"Contract calculated lending APR: {form.format(estimatedSupplyAPY/1e27)}\n"
@@ -93,7 +95,7 @@ def test_lending_apr(
     )
     vault.addStrategy(strategy, debt_ratio, 0, 2**256 - 1, 500, {"from": gov})
     vault.setDepositLimit(deposit_limit, {"from": gov})
-    estimatedSupplyAPY = plugin._lendingApr(depositAmount)*1e9
+    estimatedSupplyAPY = plugin.lendingApr(depositAmount)*1e9
     vault.deposit(depositAmount, {"from": whale})
     print("Deposit: ", formS.format(depositAmount / 10**decimals))
     chain.sleep(1)

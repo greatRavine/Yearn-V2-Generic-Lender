@@ -186,7 +186,7 @@ def rando(accounts):
 
 @pytest.fixture
 def trade_factory():
-    yield Contract("0xd6a8ae62f4d593DAf72E2D7c9f7bDB89AB069F06")
+    yield Contract("0xcadba199f3ac26f67f660c89d43eb1820b7f7a3b")
 
 
 @pytest.fixture
@@ -212,12 +212,6 @@ def reward_token(interface):
     yield interface.ERC20(token_address)
 
 
-@pytest.fixture
-def reward_token():
-    yield "0xd9Fcd98c322942075A5C3860693e9f4f03AAE07b"
-
-
-
 @pytest.fixture(scope="module", autouse=True)
 def shared_setup(module_isolation):
     pass
@@ -230,6 +224,10 @@ def vault(gov, rewards, guardian, currency, pm):
     vault.initialize(currency, gov, rewards, "", "")
     vault.setManagementFee(0, {"from": gov})
     yield vault
+
+@pytest.fixture
+def trade_handler(interface):
+    tf = interface.ITradeFactory("0xcadba199f3ac26f67f660c89d43eb1820b7f7a3b")
 
 
 @pytest.fixture
@@ -249,6 +247,33 @@ def strategy(
     strategy.setRewards(rewards, {"from": strategist})
 
     euler_plugin = strategist.deploy(GenericEuler, strategy, "GenericEulerLendnStake")
+    assert euler_plugin.hasStaking() == False 
+    if staking_contract is not None:
+        euler_plugin.activateStaking(staking_contract,2*1e20,{"from": strategist})
+        assert euler_plugin.hasStaking() == True
+    strategy.addLender(euler_plugin, {"from": gov})
+    assert strategy.numLenders() == 1
+
+    yield strategy
+
+
+@pytest.fixture
+def strategy_test(
+    strategist,
+    gov,
+    rewards,
+    keeper,
+    vault,
+    Strategy,
+    staking_contract,
+    GenericEulerTest
+):
+    strategy = strategist.deploy(Strategy, vault)
+    strategy.setKeeper(keeper, {"from": gov})
+    strategy.setWithdrawalThreshold(0, {"from": gov})
+    strategy.setRewards(rewards, {"from": strategist})
+
+    euler_plugin = strategist.deploy(GenericEulerTest, strategy, "GenericEulerLendnStake")
     assert euler_plugin.hasStaking() == False 
     if staking_contract is not None:
         euler_plugin.activateStaking(staking_contract,2*1e20,{"from": strategist})
