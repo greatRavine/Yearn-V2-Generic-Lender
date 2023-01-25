@@ -315,10 +315,8 @@ contract GenericEuler is GenericLenderBase {
         override
         returns (address[] memory)
     {
-        address[] memory protected = new address[](3);
-        protected[0]= address(eToken);
-        protected[1] = address(eStaking);
-        protected[2] = address(EUL);
+        address[] memory protected = new address[](1);
+        protected[0] = address(want);
         return protected;
     }
 
