@@ -55,7 +55,7 @@ token_prices = {
     "USDC": 1,
     "YFI": 6_500,
     "LUSD": 1,
-    "RAI":2.8
+    "RAI":2.8,
 }
 
 
@@ -76,21 +76,20 @@ def amount(token, whale):
 def valueOfCurrencyInDollars(token):
     yield token_prices[token.symbol()]
 
-
-@pytest.fixture
-def eul_whale(accounts):
-    yield accounts.at("0x27182842E098f60e3D576794A5bFFb0777E025d3", force=True)
-
-
-
 @pytest.fixture()
 def repository(interface):
     repo = interface.ISiloRepository("0xd998C35B7900b344bbBe6555cc11576942Cf309d")
     yield repo
 
 @pytest.fixture()
+def silo(interface, repository):
+    silo = interface.ISilo(repository.getSilo(currency.address))
+    yield silo
+
+
+@pytest.fixture()
 def lens(interface):
-    lens = interface.SiloLens("0xf12C3758c1eC393704f0Db8537ef7F57368D92Ea")
+    lens = Contract.from_explorer("0xf12C3758c1eC393704f0Db8537ef7F57368D92Ea")
     yield lens
 
 @pytest.fixture()
@@ -147,6 +146,9 @@ def strategist_ms(accounts):
 def weth(interface):
     yield interface.IERC20("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
 
+@pytest.fixture
+def xai(interface):
+    yield interface.IERC20("0xd7C9F0e536dC865Ae858b0C0453Fe76D13c3bEAc")
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -164,12 +166,26 @@ def vault(gov, rewards, guardian, currency, pm):
 
 
 @pytest.fixture
+def xai_vault(gov, rewards, guardian, xai, pm):
+    Vault = pm(config["dependencies"][0]).Vault
+    xai_vault = Vault.deploy({"from": guardian})
+    xai_vault.initialize(xai, gov, rewards, "", "")
+    xai_vault.setManagementFee(0, {"from": gov})
+    yield xai_vault
+
+@pytest.fixture
+def price_provider(interface):
+    yield interface.IPriceProvidersRepository("0x7C2ca9D502f2409BeceAfa68E97a176Ff805029F")
+
+
+@pytest.fixture
 def strategy(
     strategist,
     gov,
     rewards,
     keeper,
     vault,
+    xai_vault,
     Strategy,
     GenericSilo
 ):
@@ -178,7 +194,7 @@ def strategy(
     strategy.setWithdrawalThreshold(0, {"from": gov})
     strategy.setRewards(rewards, {"from": strategist})
 
-    silo_plugin = strategist.deploy(GenericSilo, strategy, "GenericSilo")
+    silo_plugin = strategist.deploy(GenericSilo, strategy, "GenericSilo", xai_vault.address)
     strategy.addLender(silo_plugin, {"from": gov})
     assert strategy.numLenders() == 1
 
