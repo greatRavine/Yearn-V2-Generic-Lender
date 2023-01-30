@@ -47,6 +47,7 @@ interface ISiloRepository {
         /// @dev interest rate model address
         IInterestRateModel interestRateModel;
     }
+    function assetConfigs(address silo, address asset) external returns (uint256 maxLoanToValue, uint256 liquidationThreshold, address interestRateModel);
 
     event NewDefaultMaximumLTV(uint64 defaultMaximumLTV);
 

@@ -15,8 +15,8 @@ token_addresses = {
 # TODO: uncomment those tokens you want to test as want
 @pytest.fixture(
     params=[
-        "USDC",
-        "WETH"
+        "WETH",
+        "USDC"
     ],
     scope="session",
     autouse=True,
@@ -36,12 +36,17 @@ whale_addresses = {
     "WETH": "0x2f0b23f53734252bda2277357e97e1517d6b042a",
     "YFI": "0xfeb4acf3df3cdea7399794d0869ef76a6efaff52",
     "LUSD": "0x6f71fc3925605f06672409c71844ead4b700af5f",
-    "RAI": "0x537037c5ae805b9d4cecab5ee07f12a8e59a15b2"
+    "RAI": "0x537037c5ae805b9d4cecab5ee07f12a8e59a15b2",
+    "XAI": "0xc8cd77d4cd9511f2822f24ad14fe9e3c97c57836"
 }
 
-@pytest.fixture
+@pytest.fixture()
 def weth_whale(accounts, token):
-    yield accounts.at("0x2f0b23f53734252bda2277357e97e1517d6b042a", force=True)
+    yield accounts.at(whale_addresses["WETH"], force=True)
+
+@pytest.fixture()
+def xai_whale(accounts, token):
+    yield accounts.at(whale_addresses["XAI"], force=True)
 
 @pytest.fixture
 def whale(accounts, token):
@@ -50,12 +55,13 @@ def whale(accounts, token):
 
 
 token_prices = {
-    "WETH": 1_200,
+    "WETH": 1_600,
     "USDT": 1,
     "USDC": 1,
     "YFI": 6_500,
     "LUSD": 1,
     "RAI":2.8,
+    "XAI": 1
 }
 
 
@@ -76,18 +82,21 @@ def amount(token, whale):
 def valueOfCurrencyInDollars(token):
     yield token_prices[token.symbol()]
 
-@pytest.fixture()
+@pytest.fixture(autouse=True)
 def repository(interface):
     repo = interface.ISiloRepository("0xd998C35B7900b344bbBe6555cc11576942Cf309d")
     yield repo
 
-@pytest.fixture()
-def silo(interface, repository):
-    silo = interface.ISilo(repository.getSilo(currency.address))
+@pytest.fixture(autouse=True)
+def silo(interface, repository, currency, xai):
+    if currency.symbol() == "WETH":
+        silo = interface.ISilo(repository.getSilo(xai.address))  
+    else:  
+        silo = interface.ISilo(repository.getSilo(currency.address))
     yield silo
 
 
-@pytest.fixture()
+@pytest.fixture(autouse=True)
 def lens(interface):
     lens = Contract.from_explorer("0xf12C3758c1eC393704f0Db8537ef7F57368D92Ea")
     yield lens
@@ -142,7 +151,7 @@ def strategist_ms(accounts):
 
 
 # specific token addresses
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def weth(interface):
     yield interface.IERC20("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
 
@@ -156,7 +165,7 @@ def shared_setup(module_isolation):
     pass
 
 
-@pytest.fixture
+@pytest.fixture()
 def vault(gov, rewards, guardian, currency, pm):
     Vault = pm(config["dependencies"][0]).Vault
     vault = Vault.deploy({"from": guardian})
@@ -165,12 +174,15 @@ def vault(gov, rewards, guardian, currency, pm):
     yield vault
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def xai_vault(gov, rewards, guardian, xai, pm):
     Vault = pm(config["dependencies"][0]).Vault
     xai_vault = Vault.deploy({"from": guardian})
     xai_vault.initialize(xai, gov, rewards, "", "")
     xai_vault.setManagementFee(0, {"from": gov})
+    deposit_limit = 100_000_000 * (10**xai_vault.decimals())
+    xai_vault.setDepositLimit(deposit_limit, {"from": gov})
+    assert xai_vault.depositLimit() > 0
     yield xai_vault
 
 @pytest.fixture
@@ -178,7 +190,7 @@ def price_provider(interface):
     yield interface.IPriceProvidersRepository("0x7C2ca9D502f2409BeceAfa68E97a176Ff805029F")
 
 
-@pytest.fixture
+@pytest.fixture()
 def strategy(
     strategist,
     gov,
