@@ -108,9 +108,12 @@ contract GenericSilo is GenericLenderBase {
         want.safeApprove(address(silo), type(uint256).max);
         priceprovider = IPriceProvidersRepository(silorepository.priceProvidersRepository());
         mockApr = 0;
-        (borrowFactor,liquidationThreshold,) = silorepository.assetConfigs(address(silo),address(want));
+        uint256 realborrowFactor;
+        (realborrowFactor,liquidationThreshold,) = silorepository.assetConfigs(address(silo),address(want));
+        borrowFactor = realborrowFactor.mul(99).div(100);
         yvxai = VaultAPI(_xaivault);
         XAI.safeApprove(address(yvxai), type(uint256).max);
+        XAI.safeApprove(address(silo), type(uint256).max);
     }
 
     modifier keepers() {
@@ -150,7 +153,7 @@ contract GenericSilo is GenericLenderBase {
     }
 
     function _nav() internal view returns (uint256) {
-        uint256 total =balanceOfWant().add(valueInWant(balanceOfVaultInXai().add(balanceOfXai()).sub(balanceOfDebt())));
+        uint256 total =balanceOfWant().add(balanceOfCollateral()).add(valueInWant(balanceOfVaultInXai().add(balanceOfXai()))).sub(valueInWant(balanceOfDebt()));
         return total;
     }
 
@@ -216,8 +219,11 @@ contract GenericSilo is GenericLenderBase {
         if (_amount == 0) {
             return 0;
         }
+        silo.accrueInterest(address(XAI));
+        uint256 toLiquidate = valueInXai(_amount).mul(borrowFactor).div(SCALING_FACTOR);
+        _withdrawFromVault(toLiquidate);
+        _repayMaxTokenDebt();
         _withdrawFromSilo(_amount);
-        _rebalance();
         want.safeTransfer(address(strategy), _amount); 
         return _amount;
         
@@ -235,6 +241,7 @@ contract GenericSilo is GenericLenderBase {
         if (_amount == 0) {
             return;
         }
+        silo.accrueInterest(address(XAI));
         _withdrawFromSilo(_amount);
         _rebalance();
         want.safeTransfer(vault.governance(), _amount);
@@ -287,7 +294,7 @@ contract GenericSilo is GenericLenderBase {
 
     // in xai
     function liquidity() public view returns (uint256) {
-        return XAI.balanceOf(address(silo));
+        return silo.liquidity(address(XAI));
     }
 
     // in xai

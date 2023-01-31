@@ -37,6 +37,7 @@ def test_withdrawals_work(
     # whale deposits as well
     whale_deposit = amount / 2
     vault.deposit(whale_deposit, {"from": whale})
+    assert(currency.balanceOf(vault) == 51 * amount/100)
 
     chain.sleep(1)
     strategy.harvest({"from": strategist})

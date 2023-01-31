@@ -64,7 +64,6 @@ token_prices = {
     "XAI": 1
 }
 
-
 @pytest.fixture(autouse=True)
 def amount(token, whale):
     # this will get the number of tokens (around $1m worth of token)
@@ -76,7 +75,6 @@ def amount(token, whale):
         amount = token.balanceOf(whale)//2
     # token.transfer(user, amount, {"from": token_whale})
     yield amount
-
 
 @pytest.fixture
 def valueOfCurrencyInDollars(token):
@@ -101,13 +99,13 @@ def lens(interface):
     lens = Contract.from_explorer("0xf12C3758c1eC393704f0Db8537ef7F57368D92Ea")
     yield lens
 
-@pytest.fixture()
+@pytest.fixture(autouse=True)
 def strategist(accounts, whale, currency, amount):
     currency.transfer(accounts[1], amount / 10, {"from": whale})
     yield accounts[1]
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def gov(accounts):
     yield accounts[3]
 
@@ -155,7 +153,7 @@ def strategist_ms(accounts):
 def weth(interface):
     yield interface.IERC20("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def xai(interface):
     yield interface.IERC20("0xd7C9F0e536dC865Ae858b0C0453Fe76D13c3bEAc")
 
@@ -185,7 +183,7 @@ def xai_vault(gov, rewards, guardian, xai, pm):
     assert xai_vault.depositLimit() > 0
     yield xai_vault
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def price_provider(interface):
     yield interface.IPriceProvidersRepository("0x7C2ca9D502f2409BeceAfa68E97a176Ff805029F")
 
@@ -199,14 +197,14 @@ def strategy(
     vault,
     xai_vault,
     Strategy,
-    GenericSilo
+    GenericSiloTest
 ):
     strategy = strategist.deploy(Strategy, vault)
     strategy.setKeeper(keeper, {"from": gov})
     strategy.setWithdrawalThreshold(0, {"from": gov})
     strategy.setRewards(rewards, {"from": strategist})
 
-    silo_plugin = strategist.deploy(GenericSilo, strategy, "GenericSilo", xai_vault.address)
+    silo_plugin = strategist.deploy(GenericSiloTest, strategy, "GenericSilo", xai_vault.address)
     strategy.addLender(silo_plugin, {"from": gov})
     assert strategy.numLenders() == 1
 

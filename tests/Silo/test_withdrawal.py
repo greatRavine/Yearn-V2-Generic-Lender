@@ -3,6 +3,7 @@ from brownie import Wei, reverts
 from useful_methods import genericStateOfStrat, genericStateOfVault, deposit, sleep
 import random
 import brownie
+from math import isclose
 
 
 # this test cycles through every plugin and checks we can add/remove lender and withdraw
@@ -12,7 +13,6 @@ def test_withdrawals_work(
     whale,
     gov,
     strategist,
-    rando,
     vault,
     strategy,
     currency,
@@ -34,11 +34,12 @@ def test_withdrawals_work(
     status = strategy.lendStatuses()
     depositAmount = amount / 100
     vault.deposit(depositAmount, {"from": strategist})
+    assert(isclose(currency.balanceOf(vault),depositAmount,abs_tol=1,rel_tol=1e-6))
 
     # whale deposits as well
     whale_deposit = amount / 2
     vault.deposit(whale_deposit, {"from": whale})
-
+    assert(isclose(currency.balanceOf(vault),depositAmount + whale_deposit,abs_tol=1,rel_tol=1e-6))
     chain.sleep(1)
     strategy.harvest({"from": strategist})
 
@@ -48,7 +49,7 @@ def test_withdrawals_work(
     # TODO: remove all lenders -> to withdraw all amounts
     for j in status:
         plugin = interface.IGenericLender(j[3])
-        tx = strategy.safeRemoveLender(plugin, {"from": gov})
+        tx = strategy.forceRemoveLender(plugin, {"from": gov})
 
     assert currency.balanceOf(plugin) == 0
     assert currency.balanceOf(strategy) > (depositAmount + whale_deposit) * 0.999

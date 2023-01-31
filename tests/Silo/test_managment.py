@@ -60,7 +60,8 @@ def test_setter_functions(
     vault,
     strategy,
     accounts,
-    currency
+    currency,
+    xai_vault
 ):
     # Check original values
     plugin = GenericSilo.at(strategy.lenders(0))
@@ -74,7 +75,7 @@ def test_setter_functions(
     assert plugin.keep3r() == accounts[1]
     
     tx = plugin.cloneSiloLender(
-        strategy, "CloneGC", {"from": strategist}
+        strategy, "CloneGC", xai_vault.address,{"from": strategist}
     )
     clone = GenericSilo.at(tx.return_value)
 
