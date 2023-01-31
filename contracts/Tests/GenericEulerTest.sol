@@ -7,7 +7,7 @@ pragma experimental ABIEncoderV2;
 
 
 
-import "../../GenericLender/GenericEuler.sol";
+import "../GenericLender/GenericEuler.sol";
 contract GenericEulerTest is GenericEuler {
     using SafeERC20 for IERC20;
     using Address for address;

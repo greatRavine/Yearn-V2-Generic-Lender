@@ -21,7 +21,9 @@ def test_staking_apr(
     GenericEulerTest,
     staking_apy,
     staking_contract,
-    reward_token
+    reward_token,
+    lens,
+    markets
 ):
     # plugin to check additional functions
     strategy = strategy_test
@@ -31,8 +33,6 @@ def test_staking_apr(
 
     decimals = currency.decimals()
     currency.approve(vault, 2**256 - 1, {"from": whale})
-    lens = interface.IEulerSimpleLens("0x5077B7642abF198b4a5b7C4BdCE4f03016C7089C")
-    markets = interface.IEulerMarkets("0x3520d5a913427E6F0D6A83E07ccD4A4da316e4d3")
     etoken = interface.IEulerEToken(markets.underlyingToEToken(currency.address))
     staking = interface.IStakingRewards(staking_contract)
     rewardsRate = staking.rewardRate()

@@ -143,12 +143,12 @@ def dtoken(currency, markets, interface):
     
 @pytest.fixture()
 def wethetoken(markets, interface):
-    etoken = interface.IEulerEToken(markets.underlyingToEToken("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"))
+    etoken = interface.IEulerEToken(markets.underlyingToEToken(token_addresses["WETH"]))
     yield etoken
 
 @pytest.fixture()
 def wethdtoken(markets, interface):
-    dtoken = interface.IEulerDToken(markets.underlyingToDToken("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"))
+    dtoken = interface.IEulerDToken(markets.underlyingToDToken(token_addresses["WETH"]))
     yield dtoken
 
 @pytest.fixture()
@@ -224,10 +224,6 @@ def vault(gov, rewards, guardian, currency, pm):
     vault.initialize(currency, gov, rewards, "", "")
     vault.setManagementFee(0, {"from": gov})
     yield vault
-
-@pytest.fixture
-def trade_handler(interface):
-    tf = interface.ITradeFactory("0xcadba199f3ac26f67f660c89d43eb1820b7f7a3b")
 
 
 @pytest.fixture
