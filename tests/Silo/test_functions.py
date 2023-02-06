@@ -1,5 +1,5 @@
 from itertools import count
-from brownie import Wei, reverts, ZERO_ADDRESS, interface
+from brownie import Wei, reverts, ZERO_ADDRESS, interface, Contract
 import brownie
 from pytest import approx
 from math import isclose
@@ -12,15 +12,16 @@ def test_mockapr(
     whale,
     gov,
     vault,
-    strategy,
+    strategy_test,
     currency,
     amount,
-    GenericSilo,
+    GenericSiloTest,
     chain,
     strategist
 ):
+    strategy = strategy_test    
     # plugin to check additional functions
-    plugin = GenericSilo.at(strategy.lenders(0))
+    plugin = GenericSiloTest.at(strategy.lenders(0))
     depositAmount = plugin.valueInWant(plugin.liquidity())
     # sanity check on size:
     assert plugin.apr() == 0
@@ -32,15 +33,16 @@ def test_mockapr(
 
 # test if conversion calculations are correct
 def test_conversion_calculations(
-    strategy,
+    strategy_test,
     currency,
-    GenericSilo,
+    GenericSiloTest,
     valueOfCurrencyInDollars,
     price_provider,
     vault,
     xai
 ):
-    plugin = GenericSilo.at(strategy.lenders(0))
+    strategy = strategy_test
+    plugin = GenericSiloTest.at(strategy.lenders(0))
 
     # sanity test with configured prices
     # 1x
@@ -72,10 +74,10 @@ def test_deposit(
     strategist,
     rando,
     vault,
-    strategy,
+    strategy_test,
     currency,
     amount,
-    GenericSilo,
+    GenericSiloTest,
     xai_whale,
     xai_vault,
     lens,
@@ -83,7 +85,8 @@ def test_deposit(
     xai
 ):
     # plugin to check additional functions
-    plugin = GenericSilo.at(strategy.lenders(0))
+    strategy = strategy_test
+    plugin = GenericSiloTest.at(strategy.lenders(0))
     decimals = currency.decimals()
     deposit_limit = 100_000_000 * (10**decimals)
     debt_ratio = 10000

@@ -197,6 +197,28 @@ def strategy(
     vault,
     xai_vault,
     Strategy,
+    GenericSilo
+):
+    strategy = strategist.deploy(Strategy, vault)
+    strategy.setKeeper(keeper, {"from": gov})
+    strategy.setWithdrawalThreshold(0, {"from": gov})
+    strategy.setRewards(rewards, {"from": strategist})
+
+    silo_plugin = strategist.deploy(GenericSilo, strategy, "GenericSilo", xai_vault.address)
+    strategy.addLender(silo_plugin, {"from": gov})
+    assert strategy.numLenders() == 1
+
+    yield strategy
+
+@pytest.fixture()
+def strategy_test(
+    strategist,
+    gov,
+    rewards,
+    keeper,
+    vault,
+    xai_vault,
+    Strategy,
     GenericSiloTest
 ):
     strategy = strategist.deploy(Strategy, vault)
@@ -204,7 +226,7 @@ def strategy(
     strategy.setWithdrawalThreshold(0, {"from": gov})
     strategy.setRewards(rewards, {"from": strategist})
 
-    silo_plugin = strategist.deploy(GenericSiloTest, strategy, "GenericSilo", xai_vault.address)
+    silo_plugin = strategist.deploy(GenericSiloTest, strategy, "GenericSiloTest", xai_vault.address)
     strategy.addLender(silo_plugin, {"from": gov})
     assert strategy.numLenders() == 1
 

@@ -220,7 +220,10 @@ contract GenericSilo is GenericLenderBase {
             return 0;
         }
         silo.accrueInterest(address(XAI));
-        uint256 toLiquidate = valueInXai(_amount).mul(borrowFactor).div(SCALING_FACTOR);
+        uint256 projectedCollateral = valueInWant(balanceOfDebt().mul(SCALING_FACTOR).div(borrowFactor));
+        uint256 collateral = balanceOfCollateral();
+        uint256 difference = projectedCollateral > collateral ? projectedCollateral.sub(collateral) : 0;
+        uint256 toLiquidate = valueInXai(_amount.add(difference)).mul(borrowFactor).div(SCALING_FACTOR);
         _withdrawFromVault(toLiquidate);
         _repayMaxTokenDebt();
         _withdrawFromSilo(_amount);
@@ -248,6 +251,7 @@ contract GenericSilo is GenericLenderBase {
     }
 
     function withdrawAll() external override management returns (bool) {
+        silo.accrueInterest(address(XAI));
         _withdrawAllFromVault();
         _repayMaxTokenDebt();
         uint256 projectedCollateral = valueInWant(balanceOfDebt().mul(SCALING_FACTOR).div(borrowFactor));
