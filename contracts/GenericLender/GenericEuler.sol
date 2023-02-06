@@ -259,14 +259,10 @@ contract GenericEuler is GenericLenderBase {
             } else {
                 _withdrawLending(_amount - local); 
             }
-            uint256 amount = Math.min(_amount, balanceOfWant());
-            want.safeTransfer(address(strategy), amount);
-            return amount;
-
-        } else {
-           want.safeTransfer(address(strategy), _amount); 
-           return _amount;
+            _amount = Math.min(_amount, balanceOfWant());
         }
+        want.safeTransfer(address(strategy), _amount);
+        return _amount;
     }
 
     function deposit() external override management {
@@ -339,39 +335,27 @@ contract GenericEuler is GenericLenderBase {
     }
     // exitStaking removes all staked assets and claims rewards.
     function  _exitStaking() internal {
-        if (!hasStaking()) {
+        if (!hasStaking() || eStaking.balanceOf(address(this)) == 0) {
             return;
         }
-        uint256 balance = eStaking.balanceOf(address(this));
-        if (balance > 0){
-            eStaking.exit();
-            // emit WithdrawStaking(balance, eToken.convertBalanceToUnderlying(balance));
-        }
+        eStaking.exit();
+        // emit WithdrawStaking(balance, eToken.convertBalanceToUnderlying(balance));
     }
     //_amount in underlying!
     //withdrawLending withdraws as much as possible if _amount > balance or _amount > liquidity
     function  _withdrawLending(uint256 _amount) internal {
         // don't do anything if 0
-        if (_amount == 0) {
-            return;
-        }
-        // don't do anythin if balance 0
-        uint256 eTokenBalance = eToken.balanceOf(address(this));
-        if (eTokenBalance == 0) { 
+        if (_amount == 0 || eToken.balanceOf(address(this)) == 0) {
             return;
         }
         // factor in liquidity of lending pool
-        uint256 liquidity = want.balanceOf(address(EULER));
-        if (_amount > liquidity) {
-            _amount = liquidity;
-        }
+        _amount = Math.min(want.balanceOf(address(EULER)), _amount);
         // factor in current balance
         uint256 balance = eToken.balanceOfUnderlying(address(this));
         if (balance > _amount ){
             eToken.withdraw(0, _amount);
         } else  {
             eToken.withdraw(0, type(uint256).max);
- 
         }
     }
     //deposit as much as possible
