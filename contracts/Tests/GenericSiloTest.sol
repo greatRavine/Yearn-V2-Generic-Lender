@@ -21,9 +21,6 @@ contract GenericSiloTest is GenericSilo {
         
     }
 
-    function test_rebalance() external {
-        _rebalance();
-    }
 
     function test_depositToSilo() external {
         _depositToSilo();
@@ -40,13 +37,13 @@ contract GenericSiloTest is GenericSilo {
     function test_repayMaxTokenDebt() external {
         _repayMaxTokenDebt();
     }
-    function test_depositToVault(uint256 _xaiAmount) external {
-        _depositToVault(_xaiAmount);
+    function test_depositToXaiVault(uint256 _xaiAmount) external {
+        _depositToXaiVault(_xaiAmount);
     }
-    function test_withdrawFromVault(uint256 _amount) external {
-        _withdrawFromVault(_amount);
+    function test_withdrawFromXaiVault(uint256 _amount) external {
+        _withdrawFromXaiVault(_amount);
     }
-    function test_withdrawAllFromVault() external {
-        _withdrawAllFromVault();
+    function test_withdrawAllFromXaiVault() external {
+        _withdrawAllFromXaiVault();
     }
 }

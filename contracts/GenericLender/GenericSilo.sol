@@ -153,7 +153,7 @@ contract GenericSilo is GenericLenderBase {
     }
 
     function _nav() internal view returns (uint256) {
-        uint256 total =balanceOfWant().add(balanceOfCollateral()).add(valueInWant(balanceOfVaultInXai().add(balanceOfXai()))).sub(valueInWant(balanceOfDebt()));
+        uint256 total =balanceOfWant().add(balanceOfCollateral()).add(valueInWant(balanceOfXaiVaultInXai().add(balanceOfXai()))).sub(valueInWant(balanceOfDebt()));
         return total;
     }
 
@@ -199,7 +199,7 @@ contract GenericSilo is GenericLenderBase {
 
     // Alternative with harvest triggers or can also be used with tradehandler!
     function harvest() external keepers {
-        _claimRewards();
+        _rebalanceDebt(deltaInDebt());
     }
 
     // comment out isBaseFeeAcceptable() and harvestTrigger if only used with tradehandler
@@ -209,6 +209,7 @@ contract GenericSilo is GenericLenderBase {
     }
     function harvestTrigger(uint256 /*callCost*/) external view returns(bool) {
         if(!isBaseFeeAcceptable()) return false;
+
     }
 
 
@@ -220,11 +221,8 @@ contract GenericSilo is GenericLenderBase {
             return 0;
         }
         silo.accrueInterest(address(XAI));
-        uint256 projectedCollateral = valueInWant(balanceOfDebt().mul(SCALING_FACTOR).div(borrowFactor));
-        uint256 collateral = balanceOfCollateral();
-        uint256 difference = projectedCollateral > collateral ? projectedCollateral.sub(collateral) : 0;
-        uint256 toLiquidate = valueInXai(_amount.add(difference)).mul(borrowFactor).div(SCALING_FACTOR);
-        _withdrawFromVault(toLiquidate);
+        uint256 toLiquidate = valueInXai(_amount).add(deltaInDebt());
+        _withdrawFromXaiVault(toLiquidate);
         _repayMaxTokenDebt();
         _withdrawFromSilo(_amount);
         want.safeTransfer(address(strategy), _amount); 
@@ -235,24 +233,33 @@ contract GenericSilo is GenericLenderBase {
     function deposit() external override management {
         //deposit
         _depositToSilo();
-        _rebalance();
+        uint256 debt = balanceOfDebt();
+        // in xai
+        uint256 projectedDebt = valueInXai(balanceOfCollateral().mul(borrowFactor).div(SCALING_FACTOR));
+        if (projectedDebt >= debt) {
+        // borrow some and deposit
+            uint256 amount = projectedDebt.sub(debt);
+            _borrowFromSilo(amount);
+            _depositToXaiVault(balanceOfXai());
+        }
     }
 
 
     function emergencyWithdraw(uint256 _amount) external override management {
-        //withdraw
         if (_amount == 0) {
             return;
         }
         silo.accrueInterest(address(XAI));
+        uint256 toLiquidate = valueInXai(_amount).add(deltaInDebt());
+        _withdrawFromXaiVault(toLiquidate);
+        _repayMaxTokenDebt();
         _withdrawFromSilo(_amount);
-        _rebalance();
         want.safeTransfer(vault.governance(), _amount);
     }
 
     function withdrawAll() external override management returns (bool) {
         silo.accrueInterest(address(XAI));
-        _withdrawAllFromVault();
+        _withdrawAllFromXaiVault();
         _repayMaxTokenDebt();
         uint256 projectedCollateral = valueInWant(balanceOfDebt().mul(SCALING_FACTOR).div(borrowFactor));
         uint256 collateral = balanceOfCollateral();
@@ -267,7 +274,7 @@ contract GenericSilo is GenericLenderBase {
     }
 
     function _hasAssets() internal view returns (bool) {
-        return (balanceOfWant() > 0 || balanceOfCollateral() > 0 ||  balanceOfVaultShares() > 0 || balanceOfXai() > 0);
+        return (balanceOfWant() > 0 || balanceOfCollateral() > 0 ||  balanceOfXaiVaultShares() > 0 || balanceOfXai() > 0);
     }
 
     function protectedTokens()
@@ -306,12 +313,12 @@ contract GenericSilo is GenericLenderBase {
         return silolens.debtBalanceOfUnderlying(silo, address(XAI), address(this));
     }
     // in shares
-    function balanceOfVaultShares() public view returns (uint256) {
+    function balanceOfXaiVaultShares() public view returns (uint256) {
         return yvxai.balanceOf(address(this));
     }
     // in xai
-    function balanceOfVaultInXai() public view returns (uint256) {
-        return balanceOfVaultShares().mul(10**18).div(yvxai.pricePerShare());
+    function balanceOfXaiVaultInXai() public view returns (uint256) {
+        return balanceOfXaiVaultShares().mul(10**18).div(yvxai.pricePerShare());
     }
 
     // calculate xai from want
@@ -327,37 +334,41 @@ contract GenericSilo is GenericLenderBase {
         return silolens.getUserLTV(silo,address(this));
     }
 
+    // Deltas
+    function deltaInCollateral() public view returns (uint256 debt) {
+        uint256 projectedCollateral = valueInWant(balanceOfDebt().mul(SCALING_FACTOR).div(borrowFactor));
+        uint256 collateral = balanceOfCollateral();
+        debt = projectedCollateral > collateral ? projectedCollateral.sub(collateral) : 0;
+    }
+    function deltaInDebt() public view returns (uint256 debt) {
+        uint256 projectedDebt = valueInXai(balanceOfCollateral().mul(borrowFactor).div(SCALING_FACTOR));
+        uint256 currentDebt = balanceOfDebt();
+        debt = currentDebt > projectedDebt ? currentDebt - projectedDebt : 0;
+    }
+    function reservesInDebt() public view returns (uint256 reserve) {
+        uint256 projectedDebt = valueInXai(balanceOfCollateral().mul(liquidationThreshold).div(SCALING_FACTOR));
+        reserve = projectedDebt.sub(balanceOfDebt());
+    }    
+    function reservesInCollateral() public view returns (uint256 reserve) {
+        uint256 projectedCollateral = valueInWant(balanceOfDebt().mul(SCALING_FACTOR).div(liquidationThreshold));
+        reserve = balanceOfCollateral().sub(projectedCollateral);
+    }
 
 
     // ---------------------- Silo helper functions ----------------------
 
 // internal functions
-// 
 
-    function _rebalance() internal {
-        // in xai
-        uint256 debt = balanceOfDebt();
-        // in xai
-        uint256 projectedDebt = valueInXai(balanceOfCollateral().mul(borrowFactor).div(SCALING_FACTOR));
-        if (projectedDebt >= debt) {
-        // borrow some and deposit
-            uint256 amount = projectedDebt.sub(debt);
-            _borrowFromSilo(amount);
-            _depositToVault(balanceOfXai());
-        } else {
-        // payback
-            uint256 amount = debt.sub(projectedDebt);
-            _withdrawFromVault(amount);
-            _repayTokenDebt(amount);
-        }
+    function _rebalanceDebt(uint256 _amount) internal {
+        _withdrawFromXaiVault(_amount);
+        _repayTokenDebt(_amount);
     }
 
     function _depositToSilo() internal {
         uint256 local = balanceOfWant();
-        if (local == 0){
-            return;
+        if (local >0) {
+            silo.deposit(address(want), local, true);
         }
-        silo.deposit(address(want), local, true);
     }
 
     function _withdrawFromSilo(uint256 _amount) internal {
@@ -367,14 +378,10 @@ contract GenericSilo is GenericLenderBase {
         silo.withdraw(address(want), _amount, true);
     }
     function _borrowFromSilo(uint256 _xaiAmount) internal {
-        if (_xaiAmount == 0) {
-            return;
+        _xaiAmount = Math.min(liquidity(), _xaiAmount);
+        if (_xaiAmount > 0) {
+            silo.borrow(address(XAI), _xaiAmount);
         }
-        uint256 liquidity = liquidity();
-        if (liquidity < _xaiAmount) {
-            _xaiAmount = liquidity;
-        }
-        silo.borrow(address(XAI), _xaiAmount);
     }
 
     function _repayTokenDebt(uint256 _xaiAmount) internal {
@@ -388,24 +395,26 @@ contract GenericSilo is GenericLenderBase {
 
     // ---------------------- IVault functions ----------------------
 
-    function _depositToVault(uint256 _xaiAmount) internal {
-        yvxai.deposit(_xaiAmount);
+    function _depositToXaiVault(uint256 _xaiAmount) internal {
+        uint256 amount = Math.min(balanceOfXai(),_xaiAmount);
+        if (amount > 0) {
+            yvxai.deposit(amount);
+        }
     }
 
-    function _withdrawFromVault(uint256 _amount) internal {
+    function _withdrawFromXaiVault(uint256 _amount) internal {
         uint256 _sharesNeeded = _amount * 10 ** vault.decimals() / vault.pricePerShare();
-        yvxai.withdraw(Math.min(balanceOfVaultShares(), _sharesNeeded));
+        yvxai.withdraw(Math.min(balanceOfXaiVaultShares(), _sharesNeeded));
     }
-    function _withdrawAllFromVault() internal {
-        yvxai.withdraw(balanceOfVaultShares());
+    function _withdrawAllFromXaiVault() internal {
+        yvxai.withdraw(balanceOfXaiVaultShares());
     }
-
 
 
     // @note: Manual function available to management to withdraw from vault and repay debt
     function manualWithdrawAndRepayDebt(uint256 _amount) external management {
         if(_amount > 0) {
-            _withdrawFromVault(_amount);
+            _withdrawFromXaiVault(_amount);
         }
         _repayMaxTokenDebt();
     }

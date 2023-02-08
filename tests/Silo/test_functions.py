@@ -91,7 +91,9 @@ def test_deposit(
     deposit_limit = 100_000_000 * (10**decimals)
     debt_ratio = 10000
     currency.approve(vault, 2**256 - 1, {"from": whale})
+    currency.approve(vault, 2**256 - 1, {"from": strategist})
     depositAmount = amount//2
+    assert plugin.hasAssets() == False
     # sanity check on size:
     form = "{:.2%}"
     formS = "{:,.0f}"
@@ -99,9 +101,26 @@ def test_deposit(
     vault.setDepositLimit(deposit_limit, {"from": gov})
     vault.deposit(depositAmount, {"from": whale})
     plugin.setApr(20*10**18, {"from": gov})
+    assert plugin.hasAssets() == False
     chain.sleep(1)
     chain.mine(1)
     strategy.harvest({"from": strategist})
     chain.sleep(1)
     chain.mine(1)
+    strategy.harvest({"from": strategist})
+    assert plugin.hasAssets() == True
+    assert isclose(plugin.nav(),depositAmount,rel_tol=10e-4, abs_tol=2)
+    vault.deposit(depositAmount//10, {"from": strategist})
+    chain.sleep(1)
+    chain.mine(1)
+    strategy.harvest({"from": strategist})
+    chain.sleep(1)
+    chain.mine(1)
+    strategy.harvest({"from": strategist})
+    assert isclose(plugin.nav(),depositAmount+depositAmount//10,rel_tol=10e-4, abs_tol=2)
+    assert plugin.hasAssets() == True
+
+
+
+
 
