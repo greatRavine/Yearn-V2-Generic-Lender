@@ -8,7 +8,8 @@ token_addresses = {
     "WETH": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
     "YFI": "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e",
     "LUSD": "0x5f98805a4e8be255a32880fdec7f6728c6568ba0",
-    "RAI": "0x03ab458634910aad20ef5f1c8ee96f1d6ac54919"
+    "RAI": "0x03ab458634910aad20ef5f1c8ee96f1d6ac54919",
+    "LINK": "0x514910771AF9Ca656af840dff83E8264EcF986CA",
 }
 
 
@@ -18,9 +19,8 @@ token_addresses = {
         "USDC",
         "USDT",
         "WETH",
-        "YFI",
         "LUSD",
-        "RAI"
+        "LINK"
     ],
     scope="session",
     autouse=True,
@@ -69,7 +69,8 @@ whale_addresses = {
     "WETH": "0x2f0b23f53734252bda2277357e97e1517d6b042a",
     "YFI": "0xfeb4acf3df3cdea7399794d0869ef76a6efaff52",
     "LUSD": "0x6f71fc3925605f06672409c71844ead4b700af5f",
-    "RAI": "0x537037c5ae805b9d4cecab5ee07f12a8e59a15b2"
+    "RAI": "0x537037c5ae805b9d4cecab5ee07f12a8e59a15b2",
+    "LINK": "0xF977814e90dA44bFA03b6295A0616a897441aceC"
 }
 
 
@@ -90,7 +91,8 @@ token_prices = {
     "USDC": 1,
     "YFI": 6_500,
     "LUSD": 1,
-    "RAI":2.8
+    "RAI":2.8,
+    "LINK": 6.50
 }
 
 

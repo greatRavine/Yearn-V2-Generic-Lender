@@ -112,7 +112,6 @@ def test_lending_apr(
     )
 
 
-
 # test if deposit function works correctly
 # tests 0 deposit
 # tests if deposit moves all into staking or lending (depending whether staking is enabled)
