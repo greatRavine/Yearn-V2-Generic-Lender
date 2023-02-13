@@ -46,6 +46,8 @@ interface ISiloLens {
     function calculateCollateralValue(ISilo _silo, address _user, address _asset) external view returns (uint256);
     function balanceOfUnderlying(uint256 _assetTotalDeposits, address _shareToken, address _user) external view returns (uint256);
     function getBorrowAmount(ISilo _silo, address _asset, address _user, uint256 _timestamp) external view returns (uint256);
+    function getDepositAmount(ISilo _silo, address _asset, address _user, uint256 _timestamp) external view returns (uint256);
+
 }
 
 contract GenericSilo is GenericLenderBase {
@@ -59,7 +61,7 @@ contract GenericSilo is GenericLenderBase {
     uint256 internal constant SECONDS_PER_YEAR = 365.2425 * 86400;
     IERC20 public constant XAI = IERC20(0xd7C9F0e536dC865Ae858b0C0453Fe76D13c3bEAc);
     ISiloRepository public constant silorepository = ISiloRepository(0xd998C35B7900b344bbBe6555cc11576942Cf309d);
-    ISiloLens public constant silolens = ISiloLens(0xf12C3758c1eC393704f0Db8537ef7F57368D92Ea);
+    ISiloLens public constant silolens = ISiloLens(0xEc7ef49D78Da8801C6f4E5c62912E3Bf08BD28C9);
     IPriceProvidersRepository public  priceprovider;
     ISilo public silo;
     VaultAPI public yvxai;
@@ -68,6 +70,7 @@ contract GenericSilo is GenericLenderBase {
     //scaled by 10**18
     uint256 internal constant SCALING_FACTOR = 10**18;
     uint256 public borrowFactor;
+    uint256 public realBorrowFactor;
     uint256 public mockApr;
 
 
@@ -108,9 +111,8 @@ contract GenericSilo is GenericLenderBase {
         want.safeApprove(address(silo), type(uint256).max);
         priceprovider = IPriceProvidersRepository(silorepository.priceProvidersRepository());
         mockApr = 0;
-        uint256 realborrowFactor;
-        (realborrowFactor,liquidationThreshold,) = silorepository.assetConfigs(address(silo),address(want));
-        borrowFactor = realborrowFactor.mul(99).div(100);
+        (realBorrowFactor,liquidationThreshold,) = silorepository.assetConfigs(address(silo),address(want));
+        borrowFactor = realBorrowFactor.mul(99).div(100);
         yvxai = VaultAPI(_xaivault);
         XAI.safeApprove(address(yvxai), type(uint256).max);
         XAI.safeApprove(address(silo), type(uint256).max);
@@ -310,7 +312,7 @@ contract GenericSilo is GenericLenderBase {
 
     // in xai
     function balanceOfDebt() public view returns (uint256) {
-        return silolens.debtBalanceOfUnderlying(silo, address(XAI), address(this));
+        return silolens.getBorrowAmount(silo, address(XAI), address(this), now + 5 minutes);
     }
     // in shares
     function balanceOfXaiVaultShares() public view returns (uint256) {
@@ -403,11 +405,16 @@ contract GenericSilo is GenericLenderBase {
     }
 
     function _withdrawFromXaiVault(uint256 _amount) internal {
-        uint256 _sharesNeeded = _amount * 10 ** vault.decimals() / vault.pricePerShare();
-        yvxai.withdraw(Math.min(balanceOfXaiVaultShares(), _sharesNeeded));
+        if (_amount > 0) {
+            uint256 _sharesNeeded = _amount * 10 ** vault.decimals() / vault.pricePerShare();
+            yvxai.withdraw(Math.min(balanceOfXaiVaultShares(), _sharesNeeded));
+        }
     }
     function _withdrawAllFromXaiVault() internal {
-        yvxai.withdraw(balanceOfXaiVaultShares());
+        uint256 amount = balanceOfXaiVaultShares();
+        if (amount > 0) {       
+            yvxai.withdraw(amount);
+        }
     }
 
 

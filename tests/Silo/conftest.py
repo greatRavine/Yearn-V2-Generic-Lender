@@ -67,8 +67,8 @@ token_prices = {
 @pytest.fixture(autouse=True)
 def amount(token, whale):
     # this will get the number of tokens (around $1m worth of token)
-    ten_million = round(10_000_000 / token_prices[token.symbol()])
-    amount = ten_million * 10 ** token.decimals()
+    two_million = round(2_000_000 / token_prices[token.symbol()])
+    amount = two_million * 10 ** token.decimals()
     # # In order to get some funds for the token you are about to use,
     # # it impersonate a whale address
     if 2*amount > token.balanceOf(whale):
@@ -96,7 +96,7 @@ def silo(interface, repository, currency, xai):
 
 @pytest.fixture(autouse=True)
 def lens(interface):
-    lens = Contract.from_explorer("0xf12C3758c1eC393704f0Db8537ef7F57368D92Ea")
+    lens = Contract.from_explorer("0xEc7ef49D78Da8801C6f4E5c62912E3Bf08BD28C9")
     yield lens
 
 @pytest.fixture(autouse=True)

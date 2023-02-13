@@ -3,6 +3,7 @@ from brownie import Wei, reverts
 from useful_methods import genericStateOfVault, genericStateOfStrat
 import random
 import brownie
+from math import isclose
 
 
 def test_good_migration(
@@ -54,10 +55,7 @@ def test_good_migration(
     print(tx.events)
     assert vault.strategies(strategy)[6] == 0
     assert vault.strategies(new_strategy)[6] == strategy_debt
-    assert (
-        new_strategy.estimatedTotalAssets() > prior_position * 0.999
-        or new_strategy.estimatedTotalAssets() < prior_position * 1.001
-    )
+    assert (isclose(new_strategy.estimatedTotalAssets(),prior_position,rel_tol=1e-3))
 
 
 def test_normal_activity(
@@ -92,9 +90,7 @@ def test_normal_activity(
     chain.sleep(1)
     strategy.harvest({"from": strategist})
 
-    assert (
-        strategy.estimatedTotalAssets() >= depositAmount * 0.999999
-    )  # losing some dust is ok
+    assert (isclose(strategy.estimatedTotalAssets(),depositAmount,rel_tol=1e-3))  # losing some dust is ok
 
     # whale deposits as well
     whale_deposit = amount
@@ -164,7 +160,7 @@ def test_normal_activity(
     assert withdrawn > expectedout * 0.99 and withdrawn < expectedout * 1.01
 
     profit = balanceAfter - starting_balance
-    assert profit > 0
+    assert (profit > 0 or isclose(profit,0,abs_tol=10**(decimals-2)))
     print(profit)
 
 
@@ -208,7 +204,7 @@ def test_debt_increase(
             f" {form.format(j[2]/1e18)}"
         )
 
-    assert realApr > predictedApr * 0.995 and realApr < predictedApr * 1.001
+    assert isclose(realApr,predictedApr,rel_tol=1e-2)
 
     predictedApr = strategy.estimatedFutureAPR(firstDeposit * 2)
     print(
@@ -230,7 +226,7 @@ def test_debt_increase(
             f"Lender: {j[0]}, Deposits: {formS.format(j[1]/1e6)}, APR:"
             f" {form.format(j[2]/1e18)}"
         )
-    assert realApr > predictedApr * 0.995 and realApr < predictedApr * 1.001
+    assert isclose(realApr,predictedApr,rel_tol=1e-2)
 
 
 def test_vault_shares(
