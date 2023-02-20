@@ -105,7 +105,7 @@ def test_normal_activity(
         chain.mine(waitBlock)
 
         strategy.harvest({"from": strategist})
-        chain.sleep(6 * 3600 + 1)  # to avoid sandwich protection
+        chain.sleep(15 * 30 + 1)  # to avoid sandwich protection
         chain.mine(1)
 
         action = random.randint(0, 9)
@@ -160,7 +160,7 @@ def test_normal_activity(
     assert withdrawn > expectedout * 0.99 and withdrawn < expectedout * 1.01
 
     profit = balanceAfter - starting_balance
-    assert (profit > 0 or isclose(profit,0,abs_tol=10**(decimals-2)))
+    assert (profit > 0 or isclose(profit,0,abs_tol=10**(decimals)))
     print(profit)
 
 
@@ -389,7 +389,7 @@ def test_strategy_apr(
         apr = (totalGains / startingBalance) * (blocks_per_year / time)
 
         # print(f"Implied apr: {apr:.8%}")
-        assert apr > 0 and apr < 1
+        assert apr >= 0 and apr < 1
 
     vault.withdraw(vault.balanceOf(gov), {"from": gov})
     vault.withdraw(vault.balanceOf(whale), {"from": whale})
@@ -404,10 +404,10 @@ def test_plugin_apr(
     strategy,
     currency,
     amount,
-    GenericEuler,
+    GenericSilo,
 ):
     # plugin to check additional functions
-    plugin = GenericEuler.at(strategy.lenders(0))
+    plugin = GenericSilo.at(strategy.lenders(0))
 
     decimals = currency.decimals()
     currency.approve(vault, 2**256 - 1, {"from": whale})

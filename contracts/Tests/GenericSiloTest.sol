@@ -46,4 +46,7 @@ contract GenericSiloTest is GenericSilo {
     function test_withdrawAllFromXaiVault() external {
         _withdrawAllFromXaiVault();
     }
+    function test_sellWantForXai(uint256 _amount) external {
+        _sellWantForXai(_amount);
+    }
 }

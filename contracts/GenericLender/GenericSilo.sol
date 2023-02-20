@@ -27,6 +27,7 @@ import {ITradeFactory} from "../Interfaces/ySwaps/ITradeFactory.sol";
 import {ISilo} from "../Interfaces/Silo/ISilo.sol";
 import {ISiloRepository} from "../Interfaces/Silo/ISiloRepository.sol";
 import {IPriceProvidersRepository} from "../Interfaces/Silo/IPriceProvidersRepository.sol";
+import {ISwapRouter} from "../Interfaces/UniswapInterfaces/V3/ISwapRouter.sol";
 
 interface IBaseFee {
     function isCurrentBaseFeeAcceptable() external view returns (bool);
@@ -60,11 +61,19 @@ contract GenericSilo is GenericLenderBase {
     // Constants 
     uint256 internal constant SECONDS_PER_YEAR = 365.2425 * 86400;
     IERC20 public constant XAI = IERC20(0xd7C9F0e536dC865Ae858b0C0453Fe76D13c3bEAc);
+    IERC20 public constant USDC = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
     ISiloRepository public constant silorepository = ISiloRepository(0xd998C35B7900b344bbBe6555cc11576942Cf309d);
     ISiloLens public constant silolens = ISiloLens(0xEc7ef49D78Da8801C6f4E5c62912E3Bf08BD28C9);
     IPriceProvidersRepository public  priceprovider;
     ISilo public silo;
     VaultAPI public yvxai;
+    ISwapRouter public constant uniswapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+    uint24 public constant poolFee030 = 3000;
+    uint24 public constant poolFee005 = 500;
+    uint24 public constant poolFee001 = 100;
+    uint24 public constant poolFee100 = 10000;
+
+
     //scaled by 10**18
     uint256 public liquidationThreshold;
     //scaled by 10**18
@@ -116,6 +125,7 @@ contract GenericSilo is GenericLenderBase {
         yvxai = VaultAPI(_xaivault);
         XAI.safeApprove(address(yvxai), type(uint256).max);
         XAI.safeApprove(address(silo), type(uint256).max);
+        
     }
 
     modifier keepers() {
@@ -262,6 +272,15 @@ contract GenericSilo is GenericLenderBase {
     function withdrawAll() external override management returns (bool) {
         silo.accrueInterest(address(XAI));
         _withdrawAllFromXaiVault();
+        uint256 localXai = balanceOfXai();
+        uint256 debt = balanceOfDebt();
+        uint256 local = balanceOfWant();
+        if (localXai < debt && local > 0 ) {
+            uint256 missingXai = debt - localXai;
+            if (valueInXai(local) > missingXai) {
+                _sellWantForXai(missingXai);
+            }
+        }
         _repayMaxTokenDebt();
         uint256 projectedCollateral = valueInWant(balanceOfDebt().mul(SCALING_FACTOR).div(borrowFactor));
         uint256 collateral = balanceOfCollateral();
@@ -426,6 +445,40 @@ contract GenericSilo is GenericLenderBase {
         _repayMaxTokenDebt();
     }
 
-
+// needed for liqidation 
+    function _sellWantForXai(uint256 _amount) internal {
+        uint256 maxIn = Math.min(valueInWant(_amount).mul(103).div(100),balanceOfWant());
+        // only execute if there is anything to swap
+        if (maxIn > 0) {
+            if (address(want) == address(USDC)){
+                ISwapRouter.ExactOutputSingleParams memory params =
+                ISwapRouter.ExactOutputSingleParams({
+                    tokenIn: address(USDC),
+                    tokenOut: address(XAI),
+                    fee: poolFee005,
+                    recipient: address(this),
+                    deadline: block.timestamp,
+                    amountOut: _amount,
+                    amountInMaximum: maxIn,
+                    sqrtPriceLimitX96: 0
+                });
+                // The call to `exactInputSingle` executes the swap.
+                want.safeApprove(address(uniswapRouter), maxIn);
+                uniswapRouter.exactOutputSingle(params);
+            } else {
+                ISwapRouter.ExactOutputParams memory params =
+                ISwapRouter.ExactOutputParams({
+                    path: abi.encodePacked(address(XAI), poolFee005, address(USDC), poolFee005, address(want)),
+                    recipient: address(this),
+                    deadline: block.timestamp,
+                    amountOut: _amount,
+                    amountInMaximum: maxIn
+                });
+                // Executes the swap.
+                want.safeApprove(address(uniswapRouter), maxIn);
+                uniswapRouter.exactOutput(params);
+            }
+        }
+    }
 }
 

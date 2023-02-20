@@ -31,6 +31,32 @@ def test_mockapr(
     assert plugin.aprAfterDeposit(depositAmount//2) == 20*10**18
     assert plugin.aprAfterDeposit(2*depositAmount) == 0
 
+# test if staking apr calculation is correct
+def test_sellwantforxai(
+    whale,
+    gov,
+    vault,
+    strategy_test,
+    currency,
+    GenericSiloTest,
+    xai,
+    chain,
+    strategist
+):
+    strategy = strategy_test    
+    # plugin to check additional functions
+    plugin = GenericSiloTest.at(strategy.lenders(0))
+    decimals = currency.decimals()
+    # 1000$ debt to pay
+    debtinxai = 1000 * 10**18
+    debtinwant = plugin.valueInWant(debtinxai)
+    currency.transfer(plugin, debtinwant*2, {"from": whale})
+    assert isclose(currency.balanceOf(plugin),2*debtinwant,rel_tol=1e-6)
+    assert xai.balanceOf(plugin) == 0
+    plugin.test_sellWantForXai(debtinxai,{"from": gov})
+    assert isclose(xai.balanceOf(plugin),debtinxai, rel_tol=1e-6) and xai.balanceOf(plugin) >= debtinxai
+    assert isclose(currency.balanceOf(plugin),debtinwant,rel_tol=1e-1)
+
 # test if conversion calculations are correct
 def test_conversion_calculations(
     strategy_test,

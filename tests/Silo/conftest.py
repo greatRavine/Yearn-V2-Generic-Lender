@@ -15,8 +15,8 @@ token_addresses = {
 # TODO: uncomment those tokens you want to test as want
 @pytest.fixture(
     params=[
-        "WETH",
-        "USDC"
+        "USDC",
+        "WETH"
     ],
     scope="session",
     autouse=True,
@@ -173,7 +173,7 @@ def vault(gov, rewards, guardian, currency, pm):
 
 
 @pytest.fixture(autouse=True)
-def xai_vault(gov, rewards, guardian, xai, pm):
+def xai_vault(gov, rewards, guardian, xai, pm, Strategy, strategist, xai_whale):
     Vault = pm(config["dependencies"][0]).Vault
     xai_vault = Vault.deploy({"from": guardian})
     xai_vault.initialize(xai, gov, rewards, "", "")
@@ -182,6 +182,15 @@ def xai_vault(gov, rewards, guardian, xai, pm):
     xai_vault.setDepositLimit(deposit_limit, {"from": gov})
     assert xai_vault.depositLimit() > 0
     yield xai_vault
+
+@pytest.fixture(autouse=True)
+def xai_strategy(gov, rewards, xai_vault, Strategy, xai, xai_whale, strategist, keeper):
+    dummy_strategy = strategist.deploy(Strategy, xai_vault)
+    dummy_strategy.setKeeper(keeper, {"from": gov})
+    dummy_strategy.setWithdrawalThreshold(0, {"from": gov})
+    dummy_strategy.setRewards(rewards, {"from": strategist})
+    xai.transfer(dummy_strategy, 1000*10**18, {"from": xai_whale})
+    yield dummy_strategy
 
 @pytest.fixture(autouse=True)
 def price_provider(interface):

@@ -17,7 +17,8 @@ def test_clone(
     GenericSilo,
     currency,
     amount,
-    xai_vault
+    xai_vault,
+    xai_strategy
 ):
     # Clone magic
     tx = strategy.clone(vault)
@@ -83,7 +84,7 @@ def test_clone(
         chain.mine(waitBlock)
 
         cloned_strategy.harvest({"from": strategist})
-        chain.sleep(6 * 3600 + 1)  # to avoid sandwich protection
+        chain.sleep(15 * 30 + 1)
         chain.mine(1)
 
         action = random.randint(0, 9)
