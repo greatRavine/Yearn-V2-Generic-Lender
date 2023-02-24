@@ -227,6 +227,7 @@ contract GenericSilo is GenericLenderBase {
         return _amount;
     }
     // _amount in Want
+    // claims profits and turns them into want and redeposits
     function _getSurplus(uint256 _amount) internal {
         _amount = valueInXai(_amount);
         // only if the yvXAI hold more than our debt, we can take off the profits
@@ -239,6 +240,7 @@ contract GenericSilo is GenericLenderBase {
     }
 
     // _amount in Want
+    // unwind your borrow position by repaying debt and removing collateral
     function _unwind(uint256 _amount) internal {
         uint256 toLiquidate = valueInXai(_amount).mul(realBorrowFactor).div(SCALING_FACTOR).add(deltaInDebt());
         _withdrawFromXaiVault(toLiquidate);
@@ -249,7 +251,7 @@ contract GenericSilo is GenericLenderBase {
     }
 
     function deposit() external override management {
-        //deposit
+        //deposit new want into silo and borrow xai to deposit into yvxai vault
         _deposit();
     }
     function _deposit() internal {
@@ -266,6 +268,7 @@ contract GenericSilo is GenericLenderBase {
 
 
     function emergencyWithdraw(uint256 _amount) external override management {
+        // withdraw but to governance
         if (_amount == 0) {
             return;
         }
@@ -275,14 +278,19 @@ contract GenericSilo is GenericLenderBase {
         if (_amount > balanceOfWant()){
             _unwind(_amount.sub(balanceOfWant()));
         }
+        _amount=Math.min(_amount,balanceOfWant());
         want.safeTransfer(vault.governance(), _amount);
     }
 
     function withdrawAll() external override management returns (bool) {
+        // get all XAi from yxai vault
         _withdrawAllFromXaiVault();
         uint256 localXai = balanceOfXai();
         uint256 debt = balanceOfDebt();
         uint256 local = balanceOfWant();
+        // if debt > withdrawn XAi - we are doomed
+        // we sell as much as possible and we also sell want to repay debt
+        // this allows governance to send want to the plugin before we fully withdraw if necessary (only if yvxai is unprofitable)
         if (debt > localXai) {
             uint256 missingXai = debt - localXai;
             if (local > 0 && valueInXai(local) > missingXai) {
@@ -293,6 +301,7 @@ contract GenericSilo is GenericLenderBase {
         } else {
             _repayMaxTokenDebt();
             _withdrawFromSilo(balanceOfCollateral());
+            // sell remaining XAi for WANT
             _sellXaiForWant(balanceOfXai());
         }
         uint256 looseBalance = balanceOfWant();
@@ -455,7 +464,7 @@ contract GenericSilo is GenericLenderBase {
         _repayMaxTokenDebt();
     }
 
-// needed for liqidation 
+// we use uniswap, but a Dex aggregator would be better
     function _sellWantForXai(uint256 _amount) internal {
         uint256 maxIn = Math.min(valueInWant(_amount).mul(105).div(100),balanceOfWant());
         // only execute if there is anything to swap
