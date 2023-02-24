@@ -82,22 +82,12 @@ contract GenericSilo is GenericLenderBase {
     uint256 public realBorrowFactor;
     uint256 public mockApr;
 
-
-
-
     // not used with claim rewards - only used for harvest with harvest trigger!
     // to be removed if harvest & harvest trigger are not used 
     uint256 public minEarnedToClaim;
 
     // operational stuff
-    address public tradeFactory;
     address public keep3r;
-
-    // events will be removed for prod
-    event DepositCollateral (uint256 _token, uint256 _want);
-    event WithdrawCollateral (uint256 _token, uint256 _want);
-    event BorrowXAI (uint256 _token, uint256 _want);
-    event RepayXAI (uint256 _token, uint256 _want);
 
     // initialisation and constructor - passing staking contracts as argument 
     constructor(
