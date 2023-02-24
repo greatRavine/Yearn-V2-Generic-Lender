@@ -1,4 +1,5 @@
 {
     "solidity.defaultCompiler": "localFile",
-    "solidity.compileUsingRemoteVersion": "v0.6.12+commit.27d51765"
+    "solidity.compileUsingRemoteVersion": "v0.6.12+commit.27d51765",
+    "terminal.integrated.scrollback": 10000
 }

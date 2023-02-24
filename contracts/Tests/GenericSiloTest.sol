@@ -49,4 +49,19 @@ contract GenericSiloTest is GenericSilo {
     function test_sellWantForXai(uint256 _amount) external {
         _sellWantForXai(_amount);
     }
+    function test_sellXaiForWant(uint256 _amount) external {
+        _sellXaiForWant(_amount);
+    }
+    function test_unwind(uint256 _amount) external {
+        _unwind(_amount);
+    }
+    function test_getSurplus(uint256 _amount) external {
+        _getSurplus(_amount);
+    }
+    function test_deltaInCollateral() external returns (uint256 delta) {
+        return deltaInCollateral();
+    }
+    function test_deltaInDebt() external returns (uint256 delta) {
+        return deltaInDebt();
+    }
 }

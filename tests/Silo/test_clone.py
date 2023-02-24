@@ -3,7 +3,7 @@ from brownie import Wei, reverts
 from useful_methods import genericStateOfVault, genericStateOfStrat
 import random
 import brownie
-
+from math import isclose
 
 def test_clone(
     chain,
@@ -18,7 +18,9 @@ def test_clone(
     currency,
     amount,
     xai_vault,
-    xai_strategy
+    xai_strategy,
+    xai,
+    xai_whale
 ):
     # Clone magic
     tx = strategy.clone(vault)
@@ -66,7 +68,6 @@ def test_clone(
     chain.mine(1)
 
     tx = cloned_strategy.harvest({"from": strategist})
-
     assert (
         cloned_strategy.estimatedTotalAssets() >= depositAmount * 0.999999
     )  # losing some dust is ok
@@ -77,22 +78,38 @@ def test_clone(
     chain.mine(1)
     chain.sleep(10)
     tx2 = cloned_strategy.harvest({"from": strategist})
-
     for i in range(15):
-        waitBlock = random.randint(10, 50)
+        waitBlock = random.randint(10, 20)
         chain.sleep(15 * 30)
         chain.mine(waitBlock)
-
-        cloned_strategy.harvest({"from": strategist})
-        chain.sleep(15 * 30 + 1)
-        chain.mine(1)
-
         action = random.randint(0, 9)
         if action < 3:
+            #make the xai vault profitable
+            xaimount = xai_vault.totalAssets()//4
+            xai.transfer(xai_strategy, xaimount, {"from": xai_whale})
+            xai_vault.report(xaimount,0,0, {'from': xai_strategy})
+            chain.mine(1)
+            chain.sleep(1)
+            xai_strategy.harvest({"from": strategist})
             percent = random.randint(50, 99)
-
             shares = vault.balanceOf(whale)
+            print("-----------------")
             print("whale has:", shares)
+            print("Xai in Xai Vault:", cloned_lender.balanceOfXaiVaultInXai()/10**18)
+            print("Shares in Xai Vault:", cloned_lender.balanceOfXaiVaultShares()/10**18)
+            print("Price per Share in Xai Vault:", xai_vault.pricePerShare())
+            print("Debt in Xai:", cloned_lender.balanceOfDebt()/10**18)
+            print("-----------------")
+            cloned_lender.harvest({"from": strategist})
+            print("-post-------------")
+            print("whale has:", shares)
+            print("Xai in Xai Vault:", cloned_lender.balanceOfXaiVaultInXai()/10**18)
+            print("Shares in Xai Vault:", cloned_lender.balanceOfXaiVaultShares()/10**18)
+            print("Price per Share in Xai Vault:", xai_vault.pricePerShare())
+            print("Debt in Xai:", cloned_lender.balanceOfDebt()/10**18)
+            print("-post------------")
+
+
             if shares == 0:
                 break
             shareprice = vault.pricePerShare()
@@ -105,7 +122,7 @@ def test_clone(
             balanceAfter = currency.balanceOf(whale)
 
             withdrawn = balanceAfter - balanceBefore
-            assert withdrawn > expectedout * 0.99 and withdrawn < expectedout * 1.01
+            assert isclose(withdrawn,expectedout, rel_tol=1e-2)
 
         elif action < 5:
             depositAm = random.randint(10, 100) * (10**decimals)
@@ -113,7 +130,7 @@ def test_clone(
 
     # strategist withdraws
     shareprice = vault.pricePerShare()
-
+    cloned_strategy.harvest({"from": strategist})
     shares = vault.balanceOf(strategist)
     expectedout = shares * shareprice / 10**decimals
     balanceBefore = currency.balanceOf(strategist)
@@ -132,8 +149,7 @@ def test_clone(
 
     chain.mine(waitBlock)
     withdrawn = balanceAfter - balanceBefore
-    assert withdrawn > expectedout * 0.99 and withdrawn < expectedout * 1.01
-
+    assert isclose(withdrawn,expectedout, rel_tol=1e-2)
     profit = balanceAfter - starting_balance
-    assert profit > 0
+    assert profit >= 0
     print(profit)

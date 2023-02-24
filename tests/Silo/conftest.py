@@ -2,6 +2,9 @@ import pytest
 from brownie import Wei, config, Contract, interface
 
 
+
+
+
 token_addresses = {
     "USDT": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
     "USDC": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
@@ -155,7 +158,7 @@ def weth(interface):
 
 @pytest.fixture(autouse=True)
 def xai(interface):
-    yield interface.IERC20("0xd7C9F0e536dC865Ae858b0C0453Fe76D13c3bEAc")
+    yield Contract("0xd7C9F0e536dC865Ae858b0C0453Fe76D13c3bEAc")
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -173,7 +176,7 @@ def vault(gov, rewards, guardian, currency, pm):
 
 
 @pytest.fixture(autouse=True)
-def xai_vault(gov, rewards, guardian, xai, pm, Strategy, strategist, xai_whale):
+def xai_vault(gov, rewards, guardian, xai, pm, Strategy, strategist, xai_whale, chain):
     Vault = pm(config["dependencies"][0]).Vault
     xai_vault = Vault.deploy({"from": guardian})
     xai_vault.initialize(xai, gov, rewards, "", "")
@@ -181,6 +184,10 @@ def xai_vault(gov, rewards, guardian, xai, pm, Strategy, strategist, xai_whale):
     deposit_limit = 100_000_000 * (10**xai_vault.decimals())
     xai_vault.setDepositLimit(deposit_limit, {"from": gov})
     assert xai_vault.depositLimit() > 0
+    xai.approve(xai_vault, 2**256 - 1, {"from": xai_whale})
+    chain.sleep(1)
+    chain.mine(1)
+    xai_vault.deposit(1000*10**18, {"from": xai_whale})
     yield xai_vault
 
 @pytest.fixture(autouse=True)
@@ -189,7 +196,10 @@ def xai_strategy(gov, rewards, xai_vault, Strategy, xai, xai_whale, strategist, 
     dummy_strategy.setKeeper(keeper, {"from": gov})
     dummy_strategy.setWithdrawalThreshold(0, {"from": gov})
     dummy_strategy.setRewards(rewards, {"from": strategist})
-    xai.transfer(dummy_strategy, 1000*10**18, {"from": xai_whale})
+    deposit_limit = 1_000_000_000 * (10 ** 18)
+    debt_ratio = 10_000
+    xai_vault.addStrategy(dummy_strategy, debt_ratio, 0, 2**256 - 1, 500, {"from": gov})
+    xai_vault.setDepositLimit(deposit_limit, {"from": gov})
     yield dummy_strategy
 
 @pytest.fixture(autouse=True)
@@ -214,6 +224,7 @@ def strategy(
     strategy.setRewards(rewards, {"from": strategist})
 
     silo_plugin = strategist.deploy(GenericSilo, strategy, "GenericSilo", xai_vault.address)
+    silo_plugin.setApr(0.1*10**18)
     strategy.addLender(silo_plugin, {"from": gov})
     assert strategy.numLenders() == 1
 

@@ -17,6 +17,10 @@ def test_good_migration(
     strategy,
     currency,
     amount,
+    xai,
+    xai_strategy,
+    xai_whale,
+    xai_vault
 ):
     decimals = currency.decimals()
     currency.approve(vault, 2**256 - 1, {"from": whale})
@@ -34,7 +38,13 @@ def test_good_migration(
     strategy.harvest({"from": strategist})
     chain.sleep(30 * 13)
     chain.mine(30)
-
+    #make the xai vault profitable
+    xaimount = xai_vault.totalAssets()//5
+    xai.transfer(xai_strategy, xaimount, {"from": xai_whale})
+    xai_vault.report(xaimount,0,0, {'from': xai_strategy})
+    chain.mine(1)
+    chain.sleep(1)
+    xai_strategy.harvest({"from": strategist})     
     chain.sleep(1)
     strategy.harvest({"from": strategist})
 
@@ -68,6 +78,10 @@ def test_normal_activity(
     strategy,
     currency,
     amount,
+    xai_vault,
+    xai_strategy,
+    xai,
+    xai_whale
 ):
     starting_balance = currency.balanceOf(strategist)
     decimals = currency.decimals()
@@ -97,13 +111,19 @@ def test_normal_activity(
     vault.deposit(whale_deposit, {"from": whale})
     chain.mine(1)
     chain.sleep(1)
+    xai.transfer(xai_strategy, 1000*10**18, {"from": xai_whale})
+    xai_vault.report(1000*10**18,0,0, {'from': xai_strategy})
+    chain.mine(1)
+    chain.sleep(1)
+    xai_strategy.harvest({"from": strategist})
     strategy.harvest({"from": strategist})
 
     for i in range(15):
         waitBlock = random.randint(10, 50)
         chain.sleep(15 * 30)
         chain.mine(waitBlock)
-
+        xai.transfer(xai_strategy, 10000*10**18, {"from": xai_whale})
+        xai_vault.report(10000*10**18,0,0, {'from': xai_strategy})
         strategy.harvest({"from": strategist})
         chain.sleep(15 * 30 + 1)  # to avoid sandwich protection
         chain.mine(1)
@@ -342,6 +362,10 @@ def test_strategy_apr(
     whale,
     strategist,
     amount,
+    xai_vault,
+    xai_strategy,
+    xai,
+    xai_whale
 ):
     decimals = currency.decimals()
     deposit_limit = 100_000_000 * (10**decimals)
@@ -390,6 +414,15 @@ def test_strategy_apr(
 
         # print(f"Implied apr: {apr:.8%}")
         assert apr >= 0 and apr < 1
+
+    # make sure strategy was profitable and withdrawing is possible
+    ###########
+    xai.transfer(xai_strategy, 1000*10**18, {"from": xai_whale})
+    xai_vault.report(1000*10**18,0,0, {'from': xai_strategy})
+    chain.mine(1)
+    chain.sleep(1)
+    xai_strategy.harvest({"from": strategist})
+    ###########
 
     vault.withdraw(vault.balanceOf(gov), {"from": gov})
     vault.withdraw(vault.balanceOf(whale), {"from": whale})
@@ -441,7 +474,7 @@ def test_plugin_apr(
             f" {form.format(j[2]/1e18)}"
         )
 
-    assert realApr > predictedApr * 0.999 and realApr < predictedApr * 1.001
+    assert isclose(realApr,predictedApr, rel_tol=1e-2)
 
     predictedApr = strategy.estimatedFutureAPR(depositAmount * 2)
     tx2 = strategy.estimatedFutureAPR.transact(depositAmount * 2, {"from": gov})
@@ -464,4 +497,4 @@ def test_plugin_apr(
             f"Lender: {j[0]}, Deposits: {formS.format(j[1]/1e6)}, APR:"
             f" {form.format(j[2]/1e18)}"
         )
-    assert realApr > predictedApr * 0.999 and realApr < predictedApr * 1.001
+    assert isclose(realApr,predictedApr, rel_tol=1e-2)

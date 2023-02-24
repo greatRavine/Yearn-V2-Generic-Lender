@@ -8,6 +8,128 @@ from brownie.test import given, strategy
 
 
 # test if staking apr calculation is correct
+def test_unwind(
+    chain,
+    whale,
+    gov,
+    strategist,
+    rando,
+    vault,
+    strategy_test,
+    currency,
+    amount,
+    GenericSiloTest,
+    xai_whale,
+    xai_vault,
+    lens,
+    silo,
+    xai
+):
+    # plugin to check additional functions
+    strategy = strategy_test
+    plugin = GenericSiloTest.at(strategy.lenders(0))
+    decimals = currency.decimals()
+    deposit_limit = 100_000_000 * (10**decimals)
+    debt_ratio = 10000
+    currency.approve(vault, 2**256 - 1, {"from": whale})
+    currency.approve(vault, 2**256 - 1, {"from": strategist})
+    depositAmount = amount//2
+    assert plugin.hasAssets() == False
+    vault.addStrategy(strategy, debt_ratio, 0, 2**256 - 1, 500, {"from": gov})
+    vault.setDepositLimit(deposit_limit, {"from": gov})
+    vault.deposit(depositAmount, {"from": whale})
+    chain.sleep(1)
+    chain.mine(1)
+    strategy.harvest({"from": strategist})
+    col =  plugin.balanceOfCollateral()
+    debt = plugin.balanceOfDebt()
+    bf = plugin.borrowFactor()
+    print("Delta: ", plugin.deltaInDebt())
+    delta = plugin.deltaInDebt()
+    print ("collateral: ", col)
+    print ("debt: ", debt)
+    testamount = depositAmount//20
+    plugin.test_unwind(testamount, {"from": strategist})
+    col_after =  plugin.balanceOfCollateral()
+    debt_after = plugin.balanceOfDebt()
+    bf = plugin.realBorrowFactor()
+    print ("collateral_a: ", col_after)
+    print ("debt_a: ", debt_after)
+    assert isclose(col-col_after, testamount, rel_tol=0.01)
+    assert isclose(debt-debt_after, plugin.valueInXai(testamount*bf//10**18), rel_tol=0.05)
+    chain.sleep(100)
+    chain.mine(1)
+    col =  plugin.balanceOfCollateral()
+    debt = plugin.balanceOfDebt()
+    bf = plugin.borrowFactor()
+    print ("collateral: ", col)
+    print ("debt: ", debt)
+    testamount = depositAmount//2
+
+    plugin.test_unwind(testamount, {"from": strategist})
+    col_after =  plugin.balanceOfCollateral()
+    debt_after = plugin.balanceOfDebt()
+    bf = plugin.realBorrowFactor()
+    print ("collateral_a: ", col_after)
+    print ("debt_a: ", debt_after)
+    assert isclose(col-col_after, testamount, rel_tol=0.01)
+    assert isclose(debt-debt_after, plugin.valueInXai(testamount)*bf/10**18, rel_tol=0.05)
+
+# test if staking apr calculation is correct
+def test_deltas(
+    chain,
+    whale,
+    gov,
+    strategist,
+    rando,
+    vault,
+    strategy_test,
+    currency,
+    amount,
+    GenericSiloTest,
+    xai_whale,
+    xai_vault,
+    lens,
+    silo,
+    xai
+):
+    # plugin to check additional functions
+    strategy = strategy_test
+    plugin = GenericSiloTest.at(strategy.lenders(0))
+    decimals = currency.decimals()
+    deposit_limit = 100_000_000 * (10**decimals)
+    debt_ratio = 10000
+    currency.approve(vault, 2**256 - 1, {"from": whale})
+    currency.approve(vault, 2**256 - 1, {"from": strategist})
+    depositAmount = amount//2
+    assert plugin.hasAssets() == False
+    # sanity check on size:
+    form = "{:.2%}"
+    formS = "{:,.0f}"
+    vault.addStrategy(strategy, debt_ratio, 0, 2**256 - 1, 500, {"from": gov})
+    vault.setDepositLimit(deposit_limit, {"from": gov})
+    vault.deposit(depositAmount, {"from": whale})
+    chain.sleep(1)
+    chain.mine(1)
+    strategy.harvest({"from": strategist})
+    while (plugin.test_deltaInCollateral().return_value == 0):
+        chain.sleep(3600)
+        chain.mine(10)
+    delta1 = plugin.test_deltaInCollateral().return_value
+    collateral = plugin.balanceOfCollateral()
+    debt = plugin.balanceOfDebt()
+    borrowfactor = plugin.borrowFactor() / 10**18
+    delta2 = plugin.test_deltaInDebt().return_value
+    assert isclose(plugin.valueInWant(debt) / borrowfactor,collateral + delta1,rel_tol=1e-3)
+    print ("Collateral Delta: " ,delta1)
+    print ("Debt Delta: " ,delta2)
+    assert isclose(plugin.valueInXai(collateral * borrowfactor),debt - delta2,rel_tol=1e-3)
+
+
+
+
+
+# test if staking apr calculation is correct
 def test_mockapr(
     whale,
     gov,
@@ -146,7 +268,29 @@ def test_deposit(
     assert isclose(plugin.nav(),depositAmount+depositAmount//10,rel_tol=10e-4, abs_tol=2)
     assert plugin.hasAssets() == True
 
-
-
-
+def test_sellxaiforwant(
+    whale,
+    gov,
+    vault,
+    strategy_test,
+    currency,
+    GenericSiloTest,
+    xai,
+    xai_whale,
+    chain,
+    strategist
+):
+    strategy = strategy_test    
+    # plugin to check additional functions
+    plugin = GenericSiloTest.at(strategy.lenders(0))
+    decimals = currency.decimals()
+    # 1000$ debt to pay
+    debtinxai = 1000 * 10**18
+    debtinwant = plugin.valueInWant(debtinxai)
+    xai.transfer(plugin, debtinxai*2, {"from": xai_whale})
+    assert isclose(xai.balanceOf(plugin),2*debtinxai,rel_tol=1e-6)
+    assert currency.balanceOf(plugin) == 0
+    plugin.test_sellXaiForWant(debtinxai,{"from": gov})
+    assert isclose(currency.balanceOf(plugin),debtinwant, rel_tol=1e-2)
+    assert isclose(xai.balanceOf(plugin),debtinxai,rel_tol=1e-2)
 
