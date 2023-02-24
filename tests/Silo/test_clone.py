@@ -100,7 +100,7 @@ def test_clone(
             print("Price per Share in Xai Vault:", xai_vault.pricePerShare())
             print("Debt in Xai:", cloned_lender.balanceOfDebt()/10**18)
             print("-----------------")
-            cloned_lender.harvest({"from": strategist})
+            cloned_lender.tend({"from": strategist})
             print("-post-------------")
             print("whale has:", shares)
             print("Xai in Xai Vault:", cloned_lender.balanceOfXaiVaultInXai()/10**18)

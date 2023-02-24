@@ -25,6 +25,7 @@ import "../Interfaces/Euler/RPow.sol";
 import "./GenericLenderBase.sol";
 import {ITradeFactory} from "../Interfaces/ySwaps/ITradeFactory.sol";
 import {ISilo} from "../Interfaces/Silo/ISilo.sol";
+import {ISiloLens} from "../Interfaces/Silo/ISiloLens.sol";
 import {ISiloRepository} from "../Interfaces/Silo/ISiloRepository.sol";
 import {IPriceProvidersRepository} from "../Interfaces/Silo/IPriceProvidersRepository.sol";
 import {ISwapRouter} from "../Interfaces/UniswapInterfaces/V3/ISwapRouter.sol";
@@ -33,30 +34,10 @@ interface IBaseFee {
     function isCurrentBaseFeeAcceptable() external view returns (bool);
 }
 
-interface ISiloLens {
-    function totalDeposits(ISilo _silo, address _asset) external view returns (uint256);
-    function collateralOnlyDeposits(ISilo _silo, address _asset) external view returns (uint256);
-    function getUserLTV(ISilo _silo, address _user) external view returns (uint256 userLTV);
-    function debtBalanceOfUnderlying(ISilo _silo, address _asset, address _user) external view returns (uint256);
-    function calculateBorrowValue(ISilo _silo, address _user, address _asset) external view returns (uint256);
-    function getUserLiquidationThreshold(ISilo _silo, address _user) external view returns (uint256);
-    function getUserMaximumLTV(ISilo _silo, address _user) external view returns (uint256);
-    function getUtilization(ISilo _silo, address _asset) external view returns (uint256);
-    function borrowAPY(ISilo _silo, address _asset) external view returns (uint256);
-    function collateralBalanceOfUnderlying(ISilo _silo, address _asset, address _user) external view returns (uint256);
-    function calculateCollateralValue(ISilo _silo, address _user, address _asset) external view returns (uint256);
-    function balanceOfUnderlying(uint256 _assetTotalDeposits, address _shareToken, address _user) external view returns (uint256);
-    function getBorrowAmount(ISilo _silo, address _asset, address _user, uint256 _timestamp) external view returns (uint256);
-    function getDepositAmount(ISilo _silo, address _asset, address _user, uint256 _timestamp) external view returns (uint256);
-
-}
-
 contract GenericSilo is GenericLenderBase {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
-
-
 
     // Constants 
     uint256 internal constant SECONDS_PER_YEAR = 365.2425 * 86400;
@@ -82,12 +63,8 @@ contract GenericSilo is GenericLenderBase {
     uint256 public realBorrowFactor;
     uint256 public mockApr;
 
-    // not used with claim rewards - only used for harvest with harvest trigger!
-    // to be removed if harvest & harvest trigger are not used 
-    uint256 public minEarnedToClaim;
-
     // operational stuff
-    address public keep3r;
+    address public keeper;
 
     // initialisation and constructor - passing staking contracts as argument 
     constructor(
@@ -110,7 +87,7 @@ contract GenericSilo is GenericLenderBase {
         want.safeApprove(address(silo), type(uint256).max);
         priceprovider = IPriceProvidersRepository(silorepository.priceProvidersRepository());
         mockApr = 0;
-        dust = 500 * 10**18; // can be changed with setDust
+        dust = 500 * 10**18; // can be changed with setDust inherited from GenericLenderBase
         (realBorrowFactor,liquidationThreshold,) = silorepository.assetConfigs(address(silo),address(want));
         borrowFactor = realBorrowFactor.mul(99).div(100);
         yvxai = VaultAPI(_xaivault);
@@ -121,7 +98,7 @@ contract GenericSilo is GenericLenderBase {
 
     modifier keepers() {
         require(
-            msg.sender == address(keep3r) ||
+            msg.sender == address(keeper) ||
                 msg.sender == address(strategy) ||
                 msg.sender == vault.governance() ||
                 msg.sender == IBaseStrategy(strategy).strategist(),
@@ -146,8 +123,8 @@ contract GenericSilo is GenericLenderBase {
         GenericSilo(newLender).initialize(_xaivault);
     }
 
-    function setKeep3r(address _keep3r) external management {
-        keep3r = _keep3r;
+    function setKeeper(address _keeper) external management {
+        keeper = _keeper;
     }
 
     //return current holdings
@@ -194,27 +171,35 @@ contract GenericSilo is GenericLenderBase {
         return _withdraw(_amount);
     }
 
-    function harvest() external keepers {
+    function tend() external keepers {
+        // get how much interest we need to payback
         uint toRebalance = deltaInDebt();
+        // check if we have enough profits to withdraw at least dust
         uint256 _threshold = balanceOfDebt().add(dust).add(toRebalance);
         uint256 _xaiBalance = balanceOfXaiVaultInXai();
+        // check if we have enough profits to withdraw at least dust - else just rebalance the position
         uint256 toWithdraw = (_xaiBalance > _threshold) ? _xaiBalance - _threshold : toRebalance;
-        _withdrawFromXaiVault(toWithdraw);
-        _repayTokenDebt(toRebalance);
-        _sellXaiForWant(balanceOfXai());
-        _deposit();
+        if (_xaiBalance > _threshold) {
+            _withdrawFromXaiVault(_xaiBalance - _threshold);
+            _repayTokenDebt(toRebalance);
+            _sellXaiForWant(balanceOfXai());
+            _deposit();
+        } else {
+            _withdrawFromXaiVault(toRebalance);
+            _repayMaxTokenDebt();
+        }
     }
-    
 
+    
     // comment out isBaseFeeAcceptable() and harvestTrigger if only used with tradehandler
     // check if the current baseFee is below our external target
     function isBaseFeeAcceptable() internal view returns (bool) {
         return IBaseFee(0xb5e1CAcB567d98faaDB60a1fD4820720141f064F).isCurrentBaseFeeAcceptable();
     }
     
-    function harvestTrigger(uint256 /*callCost*/) external view returns(bool) {
+    function tendTrigger(uint256 /*callCost*/) external view returns(bool) {
         //1% buffer before liquidation - no matter what gas fees are, we need to rebalance.
-        if (getCurrentLTV() > liquidationThreshold - 10**16){
+        if (getCurrentLTV() > (liquidationThreshold - 10**16)){
             return true;
         }
         if(isBaseFeeAcceptable() && getCurrentLTV() > realBorrowFactor) {
@@ -224,12 +209,16 @@ contract GenericSilo is GenericLenderBase {
 
     // _amount in Want
     function _withdraw(uint256 _amount) internal returns (uint256) {
+        // don't do anything for 0
         if (_amount == 0) {
             return 0;
         }
+        // if we don't have enough, check if we can take profits
         if (_amount > balanceOfWant()){
             _getSurplus(_amount.sub(balanceOfWant()));
         }
+        // if we still don't have enough, unwind your borrow position
+        // if yvXAI vault holds less tokens than our debt we may not be able to unwind completely
         if (_amount > balanceOfWant()){
             _unwind(_amount.sub(balanceOfWant()));
         }
@@ -240,7 +229,9 @@ contract GenericSilo is GenericLenderBase {
     // _amount in Want
     function _getSurplus(uint256 _amount) internal {
         _amount = valueInXai(_amount);
+        // only if the yvXAI hold more than our debt, we can take off the profits
         uint256 toSellOffinXai = (balanceOfXaiVaultInXai() > balanceOfDebt()) ? Math.min(_amount,balanceOfXaiVaultInXai().sub(balanceOfDebt())) : 0;
+        // we only do it if the profit is larger than dust
         if (toSellOffinXai > dust) {
             _withdrawFromXaiVault(toSellOffinXai);
             _sellXaiForWant(toSellOffinXai);
@@ -252,7 +243,8 @@ contract GenericSilo is GenericLenderBase {
         uint256 toLiquidate = valueInXai(_amount).mul(realBorrowFactor).div(SCALING_FACTOR).add(deltaInDebt());
         _withdrawFromXaiVault(toLiquidate);
         _repayMaxTokenDebt();
-        uint256 toWithdraw = Math.min(balanceOfCollateral().sub(valueInWant(balanceOfDebt()).mul(borrowFactor).div(SCALING_FACTOR)), _amount);
+        // Collateral - Ratio
+        uint256 toWithdraw = Math.min(balanceOfCollateral().sub(valueInWant(balanceOfDebt()).mul(SCALING_FACTOR).div(borrowFactor)), _amount);
         _withdrawFromSilo(toWithdraw); 
     }
 

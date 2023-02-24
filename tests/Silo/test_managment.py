@@ -66,23 +66,23 @@ def test_setter_functions(
     # Check original values
     plugin = GenericSilo.at(strategy.lenders(0))
 
-    assert plugin.keep3r() == ZERO_ADDRESS
+    assert plugin.keeper() == ZERO_ADDRESS
 
     with brownie.reverts():
-        plugin.setKeep3r(accounts[1], {"from": rando})
+        plugin.setKeeper(accounts[1], {"from": rando})
 
-    plugin.setKeep3r(accounts[1], {"from": strategist})
-    assert plugin.keep3r() == accounts[1]
+    plugin.setKeeper(accounts[1], {"from": strategist})
+    assert plugin.keeper() == accounts[1]
     
     tx = plugin.cloneSiloLender(
         strategy, "CloneGC", xai_vault.address,{"from": strategist}
     )
     clone = GenericSilo.at(tx.return_value)
 
-    assert clone.keep3r() == ZERO_ADDRESS
+    assert clone.keeper() == ZERO_ADDRESS
 
     with brownie.reverts():
-        clone.setKeep3r(accounts[1], {"from": rando})
+        clone.setKeeper(accounts[1], {"from": rando})
 
-    clone.setKeep3r(accounts[1], {"from": strategist})
-    assert clone.keep3r() == accounts[1]
+    clone.setKeeper(accounts[1], {"from": strategist})
+    assert clone.keeper() == accounts[1]
