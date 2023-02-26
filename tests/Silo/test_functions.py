@@ -7,7 +7,128 @@ import random
 from brownie.test import given, strategy
 
 
-# test if staking apr calculation is correct
+
+
+# def test_tend(
+#     chain,
+#     whale,
+#     gov,
+#     strategist,
+#     strategist_ms,
+#     vault,
+#     strategy_test,
+#     currency,
+#     amount,
+#     GenericSiloTest,
+#     gas_oracle,
+#     xai,
+#     xai_strategy,
+#     xai_whale,
+#     xai_vault
+# ):
+#     # plugin to check additional functions
+#     strategy = strategy_test
+#     gas_oracle.setMaxAcceptableBaseFee(10000 * 1e9, {"from": strategist_ms})
+#     plugin = GenericSiloTest.at(strategy.lenders(0))
+#     decimals = currency.decimals()
+#     deposit_limit = 100_000_000 * (10**decimals)
+#     debt_ratio = 10000
+#     currency.approve(vault, 2**256 - 1, {"from": whale})
+#     currency.approve(vault, 2**256 - 1, {"from": strategist})
+#     depositAmount = amount//10
+#     assert plugin.hasAssets() == False
+#     vault.addStrategy(strategy, debt_ratio, 0, 2**256 - 1, 500, {"from": gov})
+#     vault.setDepositLimit(deposit_limit, {"from": gov})
+#     vault.deposit(depositAmount, {"from": whale})
+#     chain.sleep(1)
+#     chain.mine(1)
+#     strategy.harvest({"from": strategist})
+#     chain.mine(1)
+#     chain.sleep(1)
+#     dust = plugin.dust()
+#     while (plugin.tendTrigger(0) == False):
+#         #make the xai vault profitable
+#         xaimount = min(plugin.valueInXai(depositAmount), xai.balanceOf(xai_whale)/5)
+#         xai.transfer(xai_strategy, xaimount, {"from": xai_whale})
+#         chain.mine(1)
+#         chain.sleep(1)
+#         xai_vault.report(xaimount,0,0, {'from': xai_strategy})
+#         chain.mine(random.randint(1,50))
+#         chain.sleep(random.randint(24*3600,7*24*3600))
+#         xai_strategy.harvest({"from": strategist})
+#         print("-----------------")
+#         print("Xai in Xai Vault:", plugin.balanceOfXaiVaultInXai()/10**18)
+#         print("Debt :", plugin.balanceOfDebt()/10**18)
+#         print("Price per Share in Xai Vault:", xai_vault.pricePerShare())
+#         print("Surplus: ",(plugin.balanceOfXaiVaultInXai() - plugin.balanceOfDebt())/10**18)
+#         print("Delta in Debt: ", (plugin.test_deltaInDebt())/10**18)
+#         print("Debt Ratio: ", (plugin.test_getCurrentLTV()/10**18))
+#         print("-----------------") 
+#     assert(plugin.tendTrigger(0) == True)
+#     assert(plugin.test_deltaInDebt()/10**18 > 0)
+#     plugin.tend({"from": strategist})
+#     assert(isclose(plugin.test_deltaInDebt()/10**18,0,abs_tol=10**16))
+#     assert(plugin.tendTrigger(0) == False)
+
+
+def test_getsurplus(
+    chain,
+    whale,
+    gov,
+    strategist,
+    vault,
+    strategy_test,
+    currency,
+    amount,
+    GenericSiloTest,
+    silo,
+    xai,
+    xai_strategy,
+    xai_whale,
+    xai_vault
+):
+    # plugin to check additional functions
+    strategy = strategy_test
+    plugin = GenericSiloTest.at(strategy.lenders(0))
+    decimals = currency.decimals()
+    deposit_limit = 100_000_000 * (10**decimals)
+    debt_ratio = 10000
+    currency.approve(vault, 2**256 - 1, {"from": whale})
+    currency.approve(vault, 2**256 - 1, {"from": strategist})
+    depositAmount = amount//10
+    assert plugin.hasAssets() == False
+    vault.addStrategy(strategy, debt_ratio, 0, 2**256 - 1, 500, {"from": gov})
+    vault.setDepositLimit(deposit_limit, {"from": gov})
+    vault.deposit(depositAmount, {"from": whale})
+    chain.sleep(1)
+    chain.mine(1)
+    strategy.harvest({"from": strategist})
+    chain.mine(1)
+    chain.sleep(1)
+    dust = plugin.dust()
+    while ((plugin.balanceOfXaiVaultInXai() - plugin.balanceOfDebt()) < (dust + plugin.test_deltaInDebt())):
+        #make the xai vault profitable
+        xaimount = min(plugin.valueInXai(depositAmount), xai.balanceOf(xai_whale)/5)
+        xai.transfer(xai_strategy, xaimount, {"from": xai_whale})
+        chain.mine(1)
+        chain.sleep(1)
+        xai_vault.report(xaimount,0,0, {'from': xai_strategy})
+        chain.mine(1)
+        chain.sleep(1)
+        xai_strategy.harvest({"from": strategist})
+        print("-----------------")
+        print("Xai in Xai Vault:", plugin.balanceOfXaiVaultInXai()/10**18)
+        print("Debt :", plugin.balanceOfDebt()/10**18)
+        print("Price per Share in Xai Vault:", xai_vault.pricePerShare())
+        print("Surplus: ",(plugin.balanceOfXaiVaultInXai() - plugin.balanceOfDebt())/10**18)
+        print("Threshold: ", (dust + plugin.test_deltaInDebt())/10**18)
+        print("-----------------") 
+    assert((plugin.balanceOfXaiVaultInXai() - plugin.balanceOfDebt()) > (dust + plugin.test_deltaInDebt()))
+    assert(plugin.balanceOfWant() == 0)
+    plugin.test_getSurplus(dust)
+    assert(isclose(plugin.balanceOfWant(),plugin.valueInWant(dust), rel_tol=0.1))       
+
+
 def test_unwind(
     chain,
     whale,
@@ -44,8 +165,8 @@ def test_unwind(
     col =  plugin.balanceOfCollateral()
     debt = plugin.balanceOfDebt()
     bf = plugin.borrowFactor()
-    print("Delta: ", plugin.deltaInDebt())
-    delta = plugin.deltaInDebt()
+    print("Delta: ", plugin.test_deltaInDebt())
+    delta = plugin.test_deltaInDebt()
     print ("collateral: ", col)
     print ("debt: ", debt)
     testamount = depositAmount//20
@@ -112,14 +233,14 @@ def test_deltas(
     chain.sleep(1)
     chain.mine(1)
     strategy.harvest({"from": strategist})
-    while (plugin.test_deltaInCollateral().return_value == 0):
+    while (plugin.test_deltaInCollateral()== 0):
         chain.sleep(3600)
         chain.mine(10)
-    delta1 = plugin.test_deltaInCollateral().return_value
+    delta1 = plugin.test_deltaInCollateral()
     collateral = plugin.balanceOfCollateral()
     debt = plugin.balanceOfDebt()
     borrowfactor = plugin.borrowFactor() / 10**18
-    delta2 = plugin.test_deltaInDebt().return_value
+    delta2 = plugin.test_deltaInDebt()
     assert isclose(plugin.valueInWant(debt) / borrowfactor,collateral + delta1,rel_tol=1e-3)
     print ("Collateral Delta: " ,delta1)
     print ("Debt Delta: " ,delta2)
@@ -294,3 +415,34 @@ def test_sellxaiforwant(
     assert isclose(currency.balanceOf(plugin),debtinwant, rel_tol=1e-2)
     assert isclose(xai.balanceOf(plugin),debtinxai,rel_tol=1e-2)
 
+
+def test_collateral_n_debt_calculations(
+    whale,
+    gov,
+    vault,
+    strategy_test,
+    currency,
+    GenericSiloTest,
+    xai,
+    xai_whale,
+    chain,
+    strategist
+):
+    strategy = strategy_test    
+    # plugin to check additional functions
+    plugin = GenericSiloTest.at(strategy.lenders(0))
+    decimals = currency.decimals()
+    bf = plugin.borrowFactor()/10**18
+    rbf = plugin.realBorrowFactor()/10**18
+    print("Borrow Factor: ", bf)
+    print("Real Borrow Factor: ", rbf)
+    print("Currency: ", currency.symbol())
+    testamount = random.randint(1, 10) * (10**decimals)
+    debt_from_testamount = plugin.test_calcCorrespondingDebt(testamount)
+    testamountinxai = plugin.valueInXai(testamount)
+    assert(isclose(debt_from_testamount, testamountinxai*bf, rel_tol=1e-3))
+    testxaiamount = random.randint(1000, 10000) * (10**decimals)
+    collateral_from_testxaiamount = plugin.test_calcCorrespondingCollateral(testxaiamount)
+    testxaiamountincurrency = plugin.valueInWant(testxaiamount)
+    assert(isclose(collateral_from_testxaiamount, testxaiamountincurrency/bf, rel_tol=1e-3))
+    

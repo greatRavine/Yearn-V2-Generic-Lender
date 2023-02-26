@@ -109,7 +109,7 @@ def test_withdrawals_work(
     vault.deposit(depositAmount, {"from": strategist})
     strategy.harvest({"from": strategist})
     assert plugin.balanceOfDebt() > plugin.balanceOfXaiVaultInXai()
-    currency.transfer(plugin, plugin.valueInWant(plugin.balanceOfDebt()-plugin.balanceOfXaiVaultInXai()) , {"from": whale})
+    currency.transfer(plugin, 2*plugin.valueInWant(plugin.balanceOfDebt()-plugin.balanceOfXaiVaultInXai()) , {"from": whale})
     strategy.safeRemoveLender(plugin)
     # verify plugin is empty or just have less than a penny
     assert plugin.nav() < (valueOfCurrencyInDollars / 100) * 10**decimals

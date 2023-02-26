@@ -70,8 +70,8 @@ token_prices = {
 @pytest.fixture(autouse=True)
 def amount(token, whale):
     # this will get the number of tokens (around $1m worth of token)
-    two_million = round(2_000_000 / token_prices[token.symbol()])
-    amount = two_million * 10 ** token.decimals()
+    one_million = round(1_000_000 / token_prices[token.symbol()])
+    amount = one_million * 10 ** token.decimals()
     # # In order to get some funds for the token you are about to use,
     # # it impersonate a whale address
     if 2*amount > token.balanceOf(whale):
@@ -179,7 +179,7 @@ def vault(gov, rewards, guardian, currency, pm):
 def xai_vault(gov, rewards, guardian, xai, pm, Strategy, strategist, xai_whale, chain):
     Vault = pm(config["dependencies"][0]).Vault
     xai_vault = Vault.deploy({"from": guardian})
-    xai_vault.initialize(xai, gov, rewards, "", "")
+    xai_vault.initialize(xai, gov, rewards, "", "",{"from": gov})
     xai_vault.setManagementFee(0, {"from": gov})
     deposit_limit = 100_000_000 * (10**xai_vault.decimals())
     xai_vault.setDepositLimit(deposit_limit, {"from": gov})

@@ -152,7 +152,7 @@ contract GenericSilo is GenericLenderBase {
 
     function aprAfterDeposit(uint256 _amount) external view override  returns (uint256) {
         //if there is not enough XAI to borrow, report 0 apy, as we cannot deploy the captial
-        if (valueInXai(_amount).mul(borrowFactor).div(SCALING_FACTOR) >= liquidity()) {
+        if (_calcCorrespondingDebt(_amount) >= liquidity()) {
             return 0;
         } else {
             return mockApr;
@@ -175,12 +175,13 @@ contract GenericSilo is GenericLenderBase {
         // get how much interest we need to payback
         uint toRebalance = deltaInDebt();
         // check if we have enough profits to withdraw at least dust
-        uint256 _threshold = balanceOfDebt().add(dust).add(toRebalance);
-        uint256 _xaiBalance = balanceOfXaiVaultInXai();
+        uint256 debt = balanceOfDebt();
+        uint256 threshold = debt.add(dust).add(toRebalance);
+        uint256 xaiBalance = balanceOfXaiVaultInXai();
         // check if we have enough profits to withdraw at least dust - else just rebalance the position
-        uint256 toWithdraw = (_xaiBalance > _threshold) ? _xaiBalance - _threshold : toRebalance;
-        if (_xaiBalance > _threshold) {
-            _withdrawFromXaiVault(_xaiBalance - _threshold);
+        uint256 toWithdraw = (xaiBalance > threshold) ? xaiBalance - debt : toRebalance;
+        if (xaiBalance > threshold) {
+            _withdrawFromXaiVault(xaiBalance - threshold);
             _repayTokenDebt(toRebalance);
             _sellXaiForWant(balanceOfXai());
             _deposit();
@@ -242,11 +243,11 @@ contract GenericSilo is GenericLenderBase {
     // _amount in Want
     // unwind your borrow position by repaying debt and removing collateral
     function _unwind(uint256 _amount) internal {
-        uint256 toLiquidate = valueInXai(_amount).mul(realBorrowFactor).div(SCALING_FACTOR).add(deltaInDebt());
+        uint256 toLiquidate = _calcCorrespondingDebt(_amount).add(deltaInDebt());
         _withdrawFromXaiVault(toLiquidate);
         _repayMaxTokenDebt();
         // Collateral - Ratio
-        uint256 toWithdraw = Math.min(balanceOfCollateral().sub(valueInWant(balanceOfDebt()).mul(SCALING_FACTOR).div(borrowFactor)), _amount);
+        uint256 toWithdraw = Math.min(balanceOfCollateral().sub(_calcCorrespondingCollateral(balanceOfDebt())), _amount);
         _withdrawFromSilo(toWithdraw); 
     }
 
@@ -258,7 +259,7 @@ contract GenericSilo is GenericLenderBase {
         _depositToSilo();
         uint256 debt = balanceOfDebt();
         // in xai
-        uint256 projectedDebt = valueInXai(balanceOfCollateral().mul(borrowFactor).div(SCALING_FACTOR));
+        uint256 projectedDebt = _calcCorrespondingDebt(balanceOfCollateral());
         if (projectedDebt >= debt) {
         // borrow some and deposit
             uint256 amount = projectedDebt.sub(debt);
@@ -370,22 +371,28 @@ contract GenericSilo is GenericLenderBase {
         return _amount.mul(10**vault.decimals()).mul(priceprovider.getPrice(address(XAI))).div(priceprovider.getPrice(address(want))).div(10**18);
     }
 
-    function getCurrentLTV() public view returns (uint256) {
+    function getCurrentLTV() internal view returns (uint256) {
         return silolens.getUserLTV(silo,address(this));
     }
 
 
-    function deltaInDebt() public view returns (uint256 debt) {
-        uint256 projectedDebt = valueInXai(balanceOfCollateral().mul(borrowFactor).div(SCALING_FACTOR));
+    function deltaInDebt() internal view returns (uint256 debt) {
+        uint256 projectedDebt = _calcCorrespondingDebt(balanceOfCollateral());
         uint256 currentDebt = balanceOfDebt();
         debt = currentDebt > projectedDebt ? currentDebt - projectedDebt : 0;
     }
-    function deltaInCollateral() public view returns (uint256 delta) {
-        uint256 projectedCollateral = valueInWant(balanceOfDebt().mul(SCALING_FACTOR).div(borrowFactor));
+    function deltaInCollateral() internal view returns (uint256 delta) {
+        uint256 projectedCollateral = _calcCorrespondingCollateral(balanceOfDebt());
         uint256 currentCollateral = balanceOfCollateral();
         delta = projectedCollateral > currentCollateral ? projectedCollateral - currentCollateral : 0;
     }
 
+    function _calcCorrespondingDebt(uint256 _amount) internal view returns (uint256) {
+        return valueInXai(_amount).mul(borrowFactor).div(SCALING_FACTOR);
+    }
+    function _calcCorrespondingCollateral(uint256 _amount) internal view returns (uint256) {
+        return valueInWant(_amount).mul(SCALING_FACTOR).div(borrowFactor);
+    }
     // ---------------------- Silo helper functions ----------------------
 
 // internal functions
@@ -502,7 +509,7 @@ contract GenericSilo is GenericLenderBase {
     function _sellXaiForWant(uint256 _amount) internal {
         // only execute if there is anything to swap
         uint256 maxIn = Math.min(_amount,balanceOfXai());
-        uint256 minOut = valueInWant(maxIn).mul(95).div(100);
+        uint256 minOut = valueInWant(maxIn).mul(50).div(100);
         if (maxIn > 0) {
             if (address(want) == address(USDC)){
                 ISwapRouter.ExactInputSingleParams memory params =

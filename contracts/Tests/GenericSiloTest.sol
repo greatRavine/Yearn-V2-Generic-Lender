@@ -58,10 +58,19 @@ contract GenericSiloTest is GenericSilo {
     function test_getSurplus(uint256 _amount) external {
         _getSurplus(_amount);
     }
-    function test_deltaInCollateral() external returns (uint256 delta) {
+    function test_deltaInCollateral() view external returns (uint256) {
         return deltaInCollateral();
     }
-    function test_deltaInDebt() external returns (uint256 delta) {
+    function test_deltaInDebt() view external returns (uint256) {
         return deltaInDebt();
+    }
+    function test_calcCorrespondingDebt(uint256 _amount) view external returns (uint256) {
+        return _calcCorrespondingDebt(_amount);
+    }
+    function test_calcCorrespondingCollateral(uint256 _amount) view external returns (uint256) {
+        return _calcCorrespondingCollateral(_amount);
+    }
+    function test_getCurrentLTV() view external returns (uint256) {
+        return getCurrentLTV();
     }
 }
