@@ -59,11 +59,11 @@ def test_trade_factory(
     estaking = interface.IStakingRewards(staking_contract)
     earned = plugin.earnedDollar()
     earned_eul = estaking.earned(plugin.address)
-    plugin.setRewardsDust(2*earned, {"from": gov})
-    assert plugin.rewardsDust() == 2*earned
+    plugin.setRewardsInDollars(2*earned, {"from": gov})
+    assert plugin.rewardsInDollars() == 2*earned
     assert plugin.harvestTrigger(10) == False
-    plugin.setRewardsDust(earned, {"from": gov})
-    assert plugin.rewardsDust() == earned
+    plugin.setRewardsInDollars(earned, {"from": gov})
+    assert plugin.rewardsInDollars() == earned
     chain.sleep(1)
     chain.mine(1)
     assert plugin.harvestTrigger(10) == True

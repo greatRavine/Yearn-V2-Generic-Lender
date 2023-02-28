@@ -65,7 +65,7 @@ contract GenericEuler is GenericLenderBase {
     // operational stuff
     address public tradeFactory;
     address public keep3r;
-    uint256 public rewardsDust;
+    uint256 public rewardsInDollars;
 
     // initialisation and constructor
     constructor(
@@ -91,15 +91,15 @@ contract GenericEuler is GenericLenderBase {
     }
 
     // in USD scaled by 10**18 - just put how much dollar you need for harvest
-    function setRewardsDust(uint256 _rdust) external management {
-        rewardsDust = _rdust;
+    function setRewardsInDollars(uint256 _rdust) external management {
+        rewardsInDollars = _rdust;
     }
 
     // enable Staking
     function activateStaking(address _stakingContract, uint256  _rdust) external management {
         //set Staking contract and approve
         require (!hasStaking(), "Staking already initialized");
-        rewardsDust = _rdust;
+        rewardsInDollars = _rdust;
         eStaking = IStakingRewards(_stakingContract);
         IERC20(address(eToken)).safeApprove(_stakingContract, type(uint).max);
         _depositStaking();
@@ -247,7 +247,7 @@ contract GenericEuler is GenericLenderBase {
     function harvestTrigger(uint256 /*callCost*/) external view returns(bool) {
         if(!hasStaking()) return false;
         if(!isBaseFeeAcceptable()) return false;
-        if(earnedDollar() > rewardsDust) return true;
+        if(earnedDollar() > rewardsInDollars) return true;
     }
 
     // scaled by 10**18

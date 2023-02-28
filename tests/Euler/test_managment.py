@@ -77,10 +77,10 @@ def test_setter_functions(
     assert plugin.keep3r() == accounts[1]
         
     if plugin.hasStaking():
-        assert plugin.rewardsDust() > 0
+        assert plugin.rewardsInDollars() > 0
         newThreshold = 3 * 1e20
-        plugin.setRewardsDust(newThreshold, {"from": strategist})
-        assert plugin.rewardsDust() == newThreshold
+        plugin.setRewardsInDollars(newThreshold, {"from": strategist})
+        assert plugin.rewardsInDollars() == newThreshold
         plugin.deactivateStaking({"from": strategist})
         assert plugin.hasStaking() == False
     
