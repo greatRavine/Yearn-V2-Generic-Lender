@@ -57,19 +57,20 @@ def test_trade_factory(
     chain.sleep(1000)
     chain.mine(1000)
     estaking = interface.IStakingRewards(staking_contract)
-    earned = estaking.earned(plugin.address)
-    plugin.setDust(2*earned, {"from": gov})
-    assert plugin.dust() == 2*earned
+    earned = plugin.earnedDollar()
+    earned_eul = estaking.earned(plugin.address)
+    plugin.setRewardsDust(2*earned, {"from": gov})
+    assert plugin.rewardsDust() == 2*earned
     assert plugin.harvestTrigger(10) == False
-    plugin.setDust(earned, {"from": gov})
-    assert plugin.dust() == earned
+    plugin.setRewardsDust(earned, {"from": gov})
+    assert plugin.rewardsDust() == earned
     chain.sleep(1)
     chain.mine(1)
     assert plugin.harvestTrigger(10) == True
     plugin.harvest({"from": gov})
     assert estaking.earned(plugin.address) == 0
     balance = reward_token.balanceOf(plugin.address)
-    assert isclose(balance,earned, rel_tol=1e-2)
+    assert isclose(balance,earned_eul, rel_tol=1e-2)
 
     # send some eul to the strategy to trade the shit out of it :)
     toSend = 200 * 10**reward_token.decimals()

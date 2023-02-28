@@ -49,6 +49,8 @@ contract GenericEuler is GenericLenderBase {
     IEulerMarkets internal constant EMARKETS = IEulerMarkets(0x3520d5a913427E6F0D6A83E07ccD4A4da316e4d3);
     IEulerSimpleLens internal constant LENS = IEulerSimpleLens(0x5077B7642abF198b4a5b7C4BdCE4f03016C7089C);
     IERC20 internal constant EUL = IERC20(0xd9Fcd98c322942075A5C3860693e9f4f03AAE07b);
+    address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+
     // Set on _initialize
     IEulerEToken public eToken;
     IBaseIRM internal eulerIRM;
@@ -63,6 +65,7 @@ contract GenericEuler is GenericLenderBase {
     // operational stuff
     address public tradeFactory;
     address public keep3r;
+    uint256 public rewardsDust;
 
     // initialisation and constructor
     constructor(
@@ -87,24 +90,26 @@ contract GenericEuler is GenericLenderBase {
         eulerIRM = IBaseIRM(EULER.moduleIdToImplementation(moduleID));
     }
 
-
+    // in USD scaled by 10**18 - just put how much dollar you need for harvest
+    function setRewardsDust(uint256 _rdust) external management {
+        rewardsDust = _rdust;
+    }
 
     // enable Staking
-    function activateStaking(address _stakingContract, uint256  _dust) external management {
+    function activateStaking(address _stakingContract, uint256  _rdust) external management {
         //set Staking contract and approve
         require (!hasStaking(), "Staking already initialized");
-        dust = _dust;
+        rewardsDust = _rdust;
         eStaking = IStakingRewards(_stakingContract);
         IERC20(address(eToken)).safeApprove(_stakingContract, type(uint).max);
+        _depositStaking();
     }
     // Disable staking
     function deactivateStaking() external management {
         require(hasStaking(), "Staking is not enabled");
         _exitStaking();
         IERC20(address(eToken)).safeApprove(address(eStaking), 0);
-        require(eStaking.balanceOf(address(this)) == 0);
         eStaking = IStakingRewards(address(0));
-        require (!hasStaking(), "Disabling staking has failed");
     }
 
     // borrowed from spalen0
@@ -129,7 +134,7 @@ contract GenericEuler is GenericLenderBase {
             msg.sender == address(keep3r) ||
                 msg.sender == address(strategy) ||
                 msg.sender == vault.governance() ||
-                msg.sender == IBaseStrategy(strategy).strategist(),
+                msg.sender == vault.management(),
             "!keepers"
         );
         _;
@@ -242,7 +247,14 @@ contract GenericEuler is GenericLenderBase {
     function harvestTrigger(uint256 /*callCost*/) external view returns(bool) {
         if(!hasStaking()) return false;
         if(!isBaseFeeAcceptable()) return false;
-        if(eStaking.earned(address(this)) > dust) return true;
+        if(earnedDollar() > rewardsDust) return true;
+    }
+
+    // scaled by 10**18
+    function earnedDollar() public view returns (uint256) {
+        (,,uint256 eulp) = LENS.getPriceFull(address(EUL));
+        (,,uint256 usdcp) = LENS.getPriceFull(USDC);
+        return eStaking.earned(address(this)).mul(eulp).div(usdcp);
     }
 
     function _withdraw(uint256 _amount) internal returns (uint256) {
@@ -279,7 +291,12 @@ contract GenericEuler is GenericLenderBase {
             return;
         }
         if (hasStaking()) {
-            _withdrawStaking(_amount);
+            uint256 balance = eStaking.balanceOf(address(this));
+            // for small values the conversion can turn out to be 0.
+            uint256 eTokenAmount = eToken.convertUnderlyingToBalance(_amount);
+            if (balance > 0 && eTokenAmount > 0) { 
+                eStaking.withdraw(Math.min(eTokenAmount,balance));  
+            }
         }
         _withdrawLending(_amount);
         want.safeTransfer(vault.governance(), balanceOfWant());
@@ -291,12 +308,12 @@ contract GenericEuler is GenericLenderBase {
         uint256 looseBalance = balanceOfWant();
         want.safeTransfer(address(strategy), looseBalance);
         (,,,uint256 total) = getBalance();
-        return(total == 0);
+        return(dust > total);
     }
 
     function hasAssets() external view override returns (bool) {
         (,,,uint256 total) = getBalance();
-        return (total > 0);
+        return (total > dust);
     }
     function protectedTokens()
         internal
@@ -405,23 +422,6 @@ contract GenericEuler is GenericLenderBase {
         tf.disable(address(EUL), address(want));
         EUL.safeApprove(tradeFactory, 0);
         tradeFactory = address(0);
-    }
-
-    // Recovery & intervention functions
-    function reapprove() external management {
-        if (hasStaking()) {
-            IERC20(address(eToken)).safeApprove(address(eStaking), type(uint).max);
-        }
-        
-        // approve EULER main contract
-        want.safeApprove(address(EULER), type(uint256).max);
-    }
-    function revoke() external management {
-        // disapprove EULER main contract
-        want.safeApprove(address(EULER), 0);
-        if (hasStaking()) {
-            IERC20(address(eToken)).safeApprove(address(eStaking), 0);
-        }
     }
 }
 

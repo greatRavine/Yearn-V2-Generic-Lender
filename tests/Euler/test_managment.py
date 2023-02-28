@@ -75,27 +75,12 @@ def test_setter_functions(
 
     plugin.setKeep3r(accounts[1], {"from": strategist})
     assert plugin.keep3r() == accounts[1]
-
-    # test approvals
-    plugin.revoke({"from": gov})
-    euler_allowance = currency.allowance(plugin.address, euler_lending_pool)
-    assert euler_allowance == 0
-    if plugin.hasStaking():
-        staking_allowance = etoken.allowance(plugin.address, staking_contract)
-        assert staking_allowance == 0
-
-    plugin.reapprove({"from": gov})
-    euler_allowance = currency.allowance(plugin.address, euler_lending_pool)
-    assert euler_allowance > 10**64
-    if plugin.hasStaking():
-        staking_allowance = etoken.allowance(plugin.address, staking_contract)
-        assert staking_allowance > 10**64
         
     if plugin.hasStaking():
-        assert plugin.dust() > 0
+        assert plugin.rewardsDust() > 0
         newThreshold = 3 * 1e20
-        plugin.setDust(newThreshold, {"from": strategist})
-        assert plugin.dust() == newThreshold
+        plugin.setRewardsDust(newThreshold, {"from": strategist})
+        assert plugin.rewardsDust() == newThreshold
         plugin.deactivateStaking({"from": strategist})
         assert plugin.hasStaking() == False
     
