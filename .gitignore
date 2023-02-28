@@ -10,3 +10,4 @@ node_modules/
 .nvmrc
 .env
 scripts/simulate_euler.py
+.vscode/settings.json

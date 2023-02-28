@@ -509,7 +509,7 @@ contract GenericSilo is GenericLenderBase {
     function _sellXaiForWant(uint256 _amount) internal {
         // only execute if there is anything to swap
         uint256 maxIn = Math.min(_amount,balanceOfXai());
-        uint256 minOut = valueInWant(maxIn).mul(50).div(100);
+        uint256 minOut = valueInWant(maxIn).mul(95).div(100);
         if (maxIn > 0) {
             if (address(want) == address(USDC)){
                 ISwapRouter.ExactInputSingleParams memory params =
