@@ -88,6 +88,7 @@ contract GenericEuler is GenericLenderBase {
         // set interest rate module for apr estimation
         uint256 moduleID = EMARKETS.interestRateModel(address(want));
         eulerIRM = IBaseIRM(EULER.moduleIdToImplementation(moduleID));
+        require (address(eulerIRM) != address(0) && address(eToken) != address(0), "eulerIRM or eToken not found");
     }
 
     // in USD scaled by 10**18 - just put how much dollar you need for harvest
