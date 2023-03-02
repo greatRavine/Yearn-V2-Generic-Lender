@@ -105,8 +105,8 @@ def test_getsurplus(
     strategy.harvest({"from": strategist})
     chain.mine(1)
     chain.sleep(1)
-    dust = plugin.dust()
-    while ((plugin.balanceOfXaiVaultInXai() - plugin.balanceOfDebt()) < (dust + plugin.test_deltaInDebt())):
+    rdust = plugin.rewardsInDollars()
+    while ((plugin.balanceOfXaiVaultInXai() - plugin.balanceOfDebt()) < (rdust + plugin.test_deltaInDebt())):
         #make the xai vault profitable
         xaimount = min(plugin.valueInXai(depositAmount), xai.balanceOf(xai_whale)/5)
         xai.transfer(xai_strategy, xaimount, {"from": xai_whale})
@@ -121,12 +121,12 @@ def test_getsurplus(
         print("Debt :", plugin.balanceOfDebt()/10**18)
         print("Price per Share in Xai Vault:", xai_vault.pricePerShare())
         print("Surplus: ",(plugin.balanceOfXaiVaultInXai() - plugin.balanceOfDebt())/10**18)
-        print("Threshold: ", (dust + plugin.test_deltaInDebt())/10**18)
+        print("Threshold: ", (rdust + plugin.test_deltaInDebt())/10**18)
         print("-----------------") 
-    assert((plugin.balanceOfXaiVaultInXai() - plugin.balanceOfDebt()) > (dust + plugin.test_deltaInDebt()))
+    assert((plugin.balanceOfXaiVaultInXai() - plugin.balanceOfDebt()) > (rdust + plugin.test_deltaInDebt()))
     assert(plugin.balanceOfWant() == 0)
-    plugin.test_getSurplus(dust)
-    assert(isclose(plugin.balanceOfWant(),plugin.valueInWant(dust), rel_tol=0.1))       
+    plugin.test_getSurplus(rdust)
+    assert(isclose(plugin.balanceOfWant(),plugin.valueInWant(rdust), rel_tol=0.1))       
 
 
 def test_unwind(

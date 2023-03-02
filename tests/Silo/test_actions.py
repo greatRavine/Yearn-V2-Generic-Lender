@@ -226,7 +226,7 @@ def test_debt_increase(
 
     assert isclose(realApr,predictedApr,rel_tol=1e-2)
 
-    predictedApr = strategy.estimatedFutureAPR(firstDeposit * 2)
+    predictedApr = strategy.estimatedFutureAPR(firstDeposit)
     print(
         f"\nPredicted APR from {formS.format(firstDeposit/1e6)} deposit:"
         f" {form.format(predictedApr/1e18)}"

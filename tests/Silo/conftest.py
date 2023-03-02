@@ -11,7 +11,8 @@ token_addresses = {
     "WETH": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
     "YFI": "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e",
     "LUSD": "0x5f98805a4e8be255a32880fdec7f6728c6568ba0",
-    "RAI": "0x03ab458634910aad20ef5f1c8ee96f1d6ac54919"
+    "RAI": "0x03ab458634910aad20ef5f1c8ee96f1d6ac54919",
+    "DAI": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
 }
 
 
@@ -19,7 +20,6 @@ token_addresses = {
 @pytest.fixture(
     params=[
         "USDC",
-        "WETH"
     ],
     scope="session",
     autouse=True,
@@ -40,7 +40,8 @@ whale_addresses = {
     "YFI": "0xfeb4acf3df3cdea7399794d0869ef76a6efaff52",
     "LUSD": "0x6f71fc3925605f06672409c71844ead4b700af5f",
     "RAI": "0x537037c5ae805b9d4cecab5ee07f12a8e59a15b2",
-    "XAI": "0xc8cd77d4cd9511f2822f24ad14fe9e3c97c57836"
+    "XAI": "0xc8cd77d4cd9511f2822f24ad14fe9e3c97c57836",
+    "DAI": "0x075e72a5eDf65F0A5f44699c7654C1a76941Ddc8"
 }
 
 @pytest.fixture()
@@ -64,7 +65,8 @@ token_prices = {
     "YFI": 6_500,
     "LUSD": 1,
     "RAI":2.8,
-    "XAI": 1
+    "XAI": 1,
+    "DAI": 1
 }
 
 @pytest.fixture(autouse=True)

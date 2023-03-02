@@ -65,6 +65,7 @@ contract GenericSilo is GenericLenderBase {
 
     // operational stuff
     address public keeper;
+    uint256 public rewardsInDollars;
 
     // initialisation and constructor - passing staking contracts as argument 
     constructor(
@@ -87,7 +88,7 @@ contract GenericSilo is GenericLenderBase {
         want.safeApprove(address(silo), type(uint256).max);
         priceprovider = IPriceProvidersRepository(silorepository.priceProvidersRepository());
         mockApr = 0;
-        dust = 500 * 10**18; // can be changed with setDust inherited from GenericLenderBase
+        rewardsInDollars = 500 * 10**18; 
         (realBorrowFactor,liquidationThreshold,) = silorepository.assetConfigs(address(silo),address(want));
         borrowFactor = realBorrowFactor.mul(99).div(100);
         yvxai = VaultAPI(_xaivault);
@@ -125,6 +126,11 @@ contract GenericSilo is GenericLenderBase {
 
     function setKeeper(address _keeper) external management {
         keeper = _keeper;
+    }
+
+    // in USD scaled by 10**18 - just put how much dollar you need for harvest
+    function setRewardsInDollars(uint256 _rdust) external management {
+        rewardsInDollars = _rdust;
     }
 
     //return current holdings
@@ -176,9 +182,9 @@ contract GenericSilo is GenericLenderBase {
         uint toRebalance = deltaInDebt();
         // check if we have enough profits to withdraw at least dust
         uint256 debt = balanceOfDebt();
-        uint256 threshold = debt.add(dust).add(toRebalance);
+        uint256 threshold = debt.add(rewardsInDollars).add(toRebalance);
         uint256 xaiBalance = balanceOfXaiVaultInXai();
-        // check if we have enough profits to withdraw at least dust - else just rebalance the position
+        // check if we have enough profits to withdraw at least rewardsInDollars - else just rebalance the position
         uint256 toWithdraw = (xaiBalance > threshold) ? xaiBalance - debt : toRebalance;
         if (xaiBalance > threshold) {
             _withdrawFromXaiVault(xaiBalance - threshold);
@@ -233,8 +239,8 @@ contract GenericSilo is GenericLenderBase {
         _amount = valueInXai(_amount);
         // only if the yvXAI hold more than our debt, we can take off the profits
         uint256 toSellOffinXai = (balanceOfXaiVaultInXai() > balanceOfDebt()) ? Math.min(_amount,balanceOfXaiVaultInXai().sub(balanceOfDebt())) : 0;
-        // we only do it if the profit is larger than dust
-        if (toSellOffinXai > dust) {
+        // we only do it if the profit is larger than rewardsInDollars
+        if (toSellOffinXai > rewardsInDollars) {
             _withdrawFromXaiVault(toSellOffinXai);
             _sellXaiForWant(toSellOffinXai);
         }       
@@ -315,7 +321,7 @@ contract GenericSilo is GenericLenderBase {
     }
 
     function _hasAssets() internal view returns (bool) {
-        return (balanceOfWant() > 0 || balanceOfCollateral() > 0 ||  balanceOfXaiVaultShares() > 0 || balanceOfXai() > 0);
+        return (balanceOfWant() > dust || balanceOfCollateral() > dust ||  balanceOfXaiVaultShares() > dust || balanceOfXai() > dust);
     }
 
     function protectedTokens()
@@ -430,9 +436,9 @@ contract GenericSilo is GenericLenderBase {
         // @note: We cannot pay more than loose balance or more than we owe
         _repayTokenDebt(balanceOfXai());
         uint256 remaining = balanceOfXai();
-        if (remaining > 0) {
-            _sellXaiForWant(remaining);
-        }
+        // if (remaining > 0) {
+        //     _sellXaiForWant(remaining);
+        // }
     }
 
     // ---------------------- IVault functions ----------------------
@@ -494,7 +500,7 @@ contract GenericSilo is GenericLenderBase {
             } else {
                 ISwapRouter.ExactOutputParams memory params =
                 ISwapRouter.ExactOutputParams({
-                    path: abi.encodePacked(address(XAI), poolFee005, address(USDC), poolFee005, address(want)),
+                    path: abi.encodePacked(address(XAI), poolFee005, address(USDC), poolFee001, address(want)),
                     recipient: address(this),
                     deadline: block.timestamp,
                     amountOut: _amount,
