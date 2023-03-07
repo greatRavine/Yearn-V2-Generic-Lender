@@ -97,11 +97,12 @@ contract GenericEuler is GenericLenderBase {
     }
 
     // enable Staking
-    function activateStaking(address _stakingContract, uint256  _rdust) external management {
+    function activateStaking(address _stakingContract, uint256  _rdust) external onlyGovernance() {
         //set Staking contract and approve
         require (!hasStaking(), "Staking already initialized");
         rewardsInDollars = _rdust;
         eStaking = IStakingRewards(_stakingContract);
+        require(eStaking.stakingToken() == address(eToken), "Staking token does not match");
         IERC20(address(eToken)).safeApprove(_stakingContract, type(uint).max);
         _depositStaking();
     }
@@ -130,6 +131,7 @@ contract GenericEuler is GenericLenderBase {
     function setKeep3r(address _keep3r) external management {
         keep3r = _keep3r;
     }
+    
     modifier keepers() {
         require(
             msg.sender == address(keep3r) ||
@@ -140,8 +142,6 @@ contract GenericEuler is GenericLenderBase {
         );
         _;
     }
-
-
 
     //return current holdings
     function nav() external view override returns (uint256) {

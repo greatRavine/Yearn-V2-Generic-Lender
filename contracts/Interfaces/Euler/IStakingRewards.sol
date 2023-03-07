@@ -8,6 +8,7 @@ pragma experimental ABIEncoderV2;
 // https://github.com/Synthetixio/synthetix/blob/master/contracts/interfaces/IStakingRewards.sol
 interface IStakingRewards {
     // Views
+    function stakingToken() external view returns (address);
 
     function balanceOf(address account) external view returns (uint256);
 

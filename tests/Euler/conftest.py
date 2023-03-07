@@ -247,7 +247,7 @@ def strategy(
     euler_plugin = strategist.deploy(GenericEuler, strategy, "GenericEulerLendnStake")
     assert euler_plugin.hasStaking() == False 
     if staking_contract is not None:
-        euler_plugin.activateStaking(staking_contract,2*1e20,{"from": strategist})
+        euler_plugin.activateStaking(staking_contract,2*1e20,{"from": gov})
         assert euler_plugin.hasStaking() == True
     strategy.addLender(euler_plugin, {"from": gov})
     assert strategy.numLenders() == 1
