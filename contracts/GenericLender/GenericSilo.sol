@@ -150,9 +150,6 @@ contract GenericSilo is GenericLenderBase {
 
     // scaled by 1e18
     function _apr() internal view returns (uint256) {
-        //@dev use yvXAI vault to calculate apy over time.
-        // xaiVault.totalSupply() -> #yvXAI
-        // xaiVault.totalAssets() -> #XAI
         return mockApr;
     }
 
@@ -205,8 +202,8 @@ contract GenericSilo is GenericLenderBase {
     }
     
     function tendTrigger(uint256 /*callCost*/) external view returns(bool) {
-        //1% buffer before liquidation - no matter what gas fees are, we need to rebalance.
-        if (getCurrentLTV() > (liquidationThreshold - 10**16)){
+        //2% buffer before liquidation - no matter what gas fees are, we need to rebalance.
+        if (getCurrentLTV() > (liquidationThreshold - 2*10**16)){
             return true;
         }
         if(isBaseFeeAcceptable() && getCurrentLTV() > realBorrowFactor) {
