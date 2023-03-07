@@ -42,7 +42,7 @@ def test_clone(
     # Check and set staking
     assert cloned_lender.hasStaking() == False 
     if staking_contract is not None:
-        cloned_lender.activateStaking(staking_contract,2*1e20,{"from": strategist})
+        cloned_lender.activateStaking(staking_contract,2*1e20,{"from": gov})
         assert cloned_lender.hasStaking() == True
 
     cloned_strategy.addLender(cloned_lender, {"from": gov})
