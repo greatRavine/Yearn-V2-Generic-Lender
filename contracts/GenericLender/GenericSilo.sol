@@ -41,26 +41,23 @@ contract GenericSilo is GenericLenderBase {
 
     // Constants 
     uint256 internal constant SECONDS_PER_YEAR = 365.2425 * 86400;
-    IERC20 public constant XAI = IERC20(0xd7C9F0e536dC865Ae858b0C0453Fe76D13c3bEAc);
-    IERC20 public constant USDC = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
-    ISiloRepository public constant silorepository = ISiloRepository(0xd998C35B7900b344bbBe6555cc11576942Cf309d);
-    ISiloLens public constant silolens = ISiloLens(0xEc7ef49D78Da8801C6f4E5c62912E3Bf08BD28C9);
+    IERC20 internal constant XAI = IERC20(0xd7C9F0e536dC865Ae858b0C0453Fe76D13c3bEAc);
+    IERC20 internal constant USDC = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
+    ISiloRepository internal constant silorepository = ISiloRepository(0xd998C35B7900b344bbBe6555cc11576942Cf309d);
+    ISiloLens internal constant silolens = ISiloLens(0xEc7ef49D78Da8801C6f4E5c62912E3Bf08BD28C9);
     IPriceProvidersRepository public  priceprovider;
     ISilo public silo;
     VaultAPI public yvxai;
-    ISwapRouter public constant uniswapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
-    uint24 public constant poolFee030 = 3000;
-    uint24 public constant poolFee005 = 500;
-    uint24 public constant poolFee001 = 100;
-    uint24 public constant poolFee100 = 10000;
+    ISwapRouter internal constant uniswapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+    uint24 internal constant poolFee030 = 3000;
+    uint24 internal constant poolFee005 = 500;
+    uint24 internal constant poolFee001 = 100;
+    uint24 internal constant poolFee100 = 10000;
 
 
-    //scaled by 10**18
-    uint256 public liquidationThreshold;
     //scaled by 10**18
     uint256 internal constant SCALING_FACTOR = 10**18;
-    uint256 public borrowFactor;
-    uint256 public realBorrowFactor;
+    uint256 public borrowFactorBuffer;
     uint256 public mockApr;
 
     // operational stuff
@@ -88,14 +85,28 @@ contract GenericSilo is GenericLenderBase {
         want.safeApprove(address(silo), type(uint256).max);
         priceprovider = IPriceProvidersRepository(silorepository.priceProvidersRepository());
         mockApr = 0;
-        rewardsInDollars = 500 * 10**18; 
-        (realBorrowFactor,liquidationThreshold,) = silorepository.assetConfigs(address(silo),address(want));
-        borrowFactor = realBorrowFactor.mul(99).div(100);
+        rewardsInDollars = 500 * 10**18; // only harvest if we get at least 500 dollars - can be changed with setRewardsInDollars(..)
+        borrowFactorBuffer = 5*10**16; //5% default
         yvxai = VaultAPI(_xaivault);
         XAI.safeApprove(address(yvxai), type(uint256).max);
         XAI.safeApprove(address(silo), type(uint256).max);
         
     }
+
+    function liquidationThreshold() public view returns (uint256 liquidationThreshold) {
+        (,liquidationThreshold,) = silorepository.assetConfigs(address(silo),address(want));
+    }
+
+    function realBorrowFactor() public view returns (uint256 realBorrowFactor) {
+        (realBorrowFactor,,) = silorepository.assetConfigs(address(silo),address(want));
+    }
+
+    function borrowFactor() public view returns (uint256) {
+        return realBorrowFactor().sub(borrowFactorBuffer);
+    }
+    function setBorrowFactorBuffer(uint256 _buffer) external management {
+        borrowFactorBuffer = _buffer;
+    }     
 
     modifier keepers() {
         require(
@@ -129,8 +140,8 @@ contract GenericSilo is GenericLenderBase {
     }
 
     // in USD scaled by 10**18 - just put how much dollar you need for harvest
-    function setRewardsInDollars(uint256 _rdust) external management {
-        rewardsInDollars = _rdust;
+    function setRewardsInDollars(uint256 _rewards) external management {
+        rewardsInDollars = _rewards;
     }
 
     //return current holdings
@@ -181,8 +192,6 @@ contract GenericSilo is GenericLenderBase {
         uint256 debt = balanceOfDebt();
         uint256 threshold = debt.add(rewardsInDollars).add(toRebalance);
         uint256 xaiBalance = balanceOfXaiVaultInXai();
-        // check if we have enough profits to withdraw at least rewardsInDollars - else just rebalance the position
-        uint256 toWithdraw = (xaiBalance > threshold) ? xaiBalance - debt : toRebalance;
         if (xaiBalance > threshold) {
             _withdrawFromXaiVault(xaiBalance - threshold);
             _repayTokenDebt(toRebalance);
@@ -203,10 +212,10 @@ contract GenericSilo is GenericLenderBase {
     
     function tendTrigger(uint256 /*callCost*/) external view returns(bool) {
         //2% buffer before liquidation - no matter what gas fees are, we need to rebalance.
-        if (getCurrentLTV() > (liquidationThreshold - 2*10**16)){
+        if (getCurrentLTV() > (liquidationThreshold() - 2*10**16)){
             return true;
         }
-        if(isBaseFeeAcceptable() && getCurrentLTV() > realBorrowFactor) {
+        if(isBaseFeeAcceptable() && getCurrentLTV() > realBorrowFactor()) {
             return true;
         }
     }
@@ -378,6 +387,13 @@ contract GenericSilo is GenericLenderBase {
         return silolens.getUserLTV(silo,address(this));
     }
 
+    function withdrawableWant() internal view returns (uint256) {
+        uint256 rf = realBorrowFactor();
+        uint256 maxSafeLoan = valueInXai(balanceOfCollateral()).mul(rf).div(SCALING_FACTOR);
+        uint256 bd = balanceOfDebt();
+        return maxSafeLoan > bd ? valueInWant(maxSafeLoan - bd) : 0;
+    }
+
 
     function deltaInDebt() internal view returns (uint256 debt) {
         uint256 projectedDebt = _calcCorrespondingDebt(balanceOfCollateral());
@@ -391,10 +407,10 @@ contract GenericSilo is GenericLenderBase {
     }
 
     function _calcCorrespondingDebt(uint256 _amount) internal view returns (uint256) {
-        return valueInXai(_amount).mul(borrowFactor).div(SCALING_FACTOR);
+        return valueInXai(_amount).mul(borrowFactor()).div(SCALING_FACTOR);
     }
     function _calcCorrespondingCollateral(uint256 _amount) internal view returns (uint256) {
-        return valueInWant(_amount).mul(SCALING_FACTOR).div(borrowFactor);
+        return valueInWant(_amount).mul(SCALING_FACTOR).div(borrowFactor());
     }
     // ---------------------- Silo helper functions ----------------------
 
